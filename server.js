@@ -1,5 +1,9 @@
 import express from 'express';
 import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import pool from './src/db/pool.js';
 import messagesRouter from './src/routes/messages.js';
 import contactsRouter from './src/routes/contacts.js';
 import metaRouter from './src/routes/meta.js';
@@ -8,8 +12,24 @@ import externalApiRouter from './src/routes/externalApi.js';
 import { enforceQuota } from './src/billing/quotaMiddleware.js';
 import { dispatchPendingMessages, getDispatcherMetrics } from './src/dispatcher/batchDispatcher.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Run migrations on startup
+async function runMigrations() {
+  try {
+    console.log('🔄 Running database migrations...');
+    const migrationFile = path.join(__dirname, 'src/db/migrations/001-multitenancy.sql');
+    const sql = fs.readFileSync(migrationFile, 'utf-8');
+    await pool.query(sql);
+    console.log('✅ Migrations completed successfully');
+  } catch (error) {
+    console.error('⚠️  Migration warning (tables may already exist):', error.message);
+  }
+}
 
 // Middleware
 app.use(express.json());
@@ -55,8 +75,11 @@ app.use((req, res) => {
   res.status(404).json({ success: false, error: 'Not found' });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 NOTNOW Stage 2 server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-});
+// Start server with migrations
+(async () => {
+  await runMigrations();
+  app.listen(PORT, () => {
+    console.log(`🚀 NOTNOW Stage 2 server running on port ${PORT}`);
+    console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+  });
+})();
