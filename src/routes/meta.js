@@ -31,6 +31,8 @@ router.get('/webhook', (req, res) => {
  */
 router.post('/webhook', async (req, res) => {
   try {
+    console.log('📱 Meta Webhook received:', JSON.stringify(req.body).substring(0, 500));
+
     // Validate signature
     if (!validateMetaWebhookSignature(req)) {
       return res.status(403).json({ success: false, error: 'Invalid signature' });
