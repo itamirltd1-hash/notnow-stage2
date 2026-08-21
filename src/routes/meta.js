@@ -15,7 +15,11 @@ router.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-  const verifyToken = process.env.META_VERIFY_TOKEN || 'your_verify_token';
+  const verifyToken = process.env.META_VERIFY_TOKEN;
+
+  if (!verifyToken) {
+    return res.status(500).json({ success: false, error: 'META_VERIFY_TOKEN not configured' });
+  }
 
   if (mode === 'subscribe' && token === verifyToken) {
     res.status(200).send(challenge);
@@ -31,8 +35,6 @@ router.get('/webhook', (req, res) => {
  */
 router.post('/webhook', async (req, res) => {
   try {
-    console.log('📱 Meta Webhook received:', JSON.stringify(req.body).substring(0, 500));
-
     // Validate signature
     if (!validateMetaWebhookSignature(req)) {
       return res.status(403).json({ success: false, error: 'Invalid signature' });

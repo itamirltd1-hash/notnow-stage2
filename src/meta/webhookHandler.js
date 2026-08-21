@@ -5,10 +5,10 @@ import crypto from 'crypto';
  * Meta sends X-Hub-Signature header with each webhook call.
  */
 export function validateMetaWebhookSignature(req) {
-  const token = process.env.META_VERIFY_TOKEN || 'your_verify_token';
+  const token = process.env.META_VERIFY_TOKEN;
   const signature = req.headers['x-hub-signature-256'];
 
-  if (!signature) {
+  if (!token || !signature) {
     return false;
   }
 
