@@ -1,5 +1,6 @@
 import express from 'express';
 import { validateMetaWebhookSignature, extractMessageFromWebhook, formatMetaResponse } from '../meta/webhookHandler.js';
+import { sendWhatsAppMessage } from '../meta/sendHandler.js';
 import { parseSchedulingIntent, detectLanguage } from '../llm/intentParser.js';
 import { extractWhatsappUserContext } from '../middleware/whatsappUserContext.js';
 import { registerOrUpdateContact, getContactNameByPhone } from '../auth/userContextExtractor.js';
@@ -138,28 +139,6 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
   } catch (error) {
     console.error('Error scheduling message:', error.message);
     await sendWhatsAppMessage(senderPhone, 'Failed to schedule message. Please try again.');
-  }
-}
-
-/**
- * Send a WhatsApp message via Meta API (simplified).
- * In production, this would use Meta's API to send the message.
- * For now, just log it.
- */
-async function sendWhatsAppMessage(recipientPhone, text) {
-  try {
-    // TODO: Implement actual Meta API call in Cycle 3
-    // For now, just log
-    console.log(`📱 Would send to ${recipientPhone}: ${text}`);
-
-    // Example of what this would look like:
-    // await axios.post(
-    //   `https://graph.instagram.com/v18.0/${process.env.META_PHONE_NUMBER_ID}/messages`,
-    //   { ...formatMetaResponse(recipientPhone, text) },
-    //   { headers: { Authorization: `Bearer ${process.env.META_API_TOKEN}` } }
-    // );
-  } catch (error) {
-    console.error('Error sending WhatsApp message:', error.message);
   }
 }
 

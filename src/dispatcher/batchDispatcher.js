@@ -1,4 +1,5 @@
 import pool from '../db/pool.js';
+import { sendWhatsAppMessage } from '../meta/sendHandler.js';
 
 const BATCH_SIZE = 100;
 const RETRY_DELAYS = [5000, 15000, 60000]; // 5s, 15s, 60s backoff
@@ -67,14 +68,16 @@ export async function dispatchPendingMessages() {
  * Returns success or throws error.
  */
 async function sendMessage(message) {
-  // TODO: Implement actual send logic based on channel
-  // For now, simulate success with small delay
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      console.log(`✅ Sent ${message.channel} to ${message.recipient_phone}`);
-      resolve();
-    }, 100);
-  });
+  const { channel, recipient_phone, recipient_email, message_body, subject } = message;
+
+  if (channel === 'whatsapp') {
+    return await sendWhatsAppMessage(recipient_phone, message_body);
+  } else if (channel === 'email') {
+    // TODO: Implement email sending via Resend
+    throw new Error('Email channel not yet implemented');
+  } else {
+    throw new Error(`Unknown channel: ${channel}`);
+  }
 }
 
 /**
