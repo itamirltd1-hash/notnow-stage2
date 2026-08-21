@@ -74,6 +74,67 @@ app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok', timestamp: new Date().toISOString() } });
 });
 
+// Legal pages (for Meta app compliance)
+app.get('/privacy', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Privacy Policy - NOTNOW</title>
+      <style>body { font-family: Arial; max-width: 800px; margin: 40px auto; line-height: 1.6; }</style>
+    </head>
+    <body>
+      <h1>Privacy Policy</h1>
+      <p><strong>Last Updated: August 21, 2026</strong></p>
+      <h2>1. Information We Collect</h2>
+      <p>We collect information you provide directly to us, including:</p>
+      <ul>
+        <li>Contact information (phone numbers, email addresses)</li>
+        <li>WhatsApp messages and scheduling preferences</li>
+        <li>Account credentials</li>
+      </ul>
+      <h2>2. How We Use Your Information</h2>
+      <p>We use your information to:</p>
+      <ul>
+        <li>Provide and improve our scheduling service</li>
+        <li>Send messages via WhatsApp</li>
+        <li>Process billing and support requests</li>
+      </ul>
+      <h2>3. Data Security</h2>
+      <p>We implement industry-standard security measures to protect your data.</p>
+      <h2>4. Contact Us</h2>
+      <p>For privacy concerns, contact us at itamirltd1@gmail.com</p>
+    </body>
+    </html>
+  `);
+});
+
+app.get('/terms', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Terms of Service - NOTNOW</title>
+      <style>body { font-family: Arial; max-width: 800px; margin: 40px auto; line-height: 1.6; }</style>
+    </head>
+    <body>
+      <h1>Terms of Service</h1>
+      <p><strong>Last Updated: August 21, 2026</strong></p>
+      <h2>1. Acceptance of Terms</h2>
+      <p>By using NOTNOW, you agree to these terms and conditions.</p>
+      <h2>2. Use License</h2>
+      <p>We grant you a limited, non-exclusive license to use our service for personal scheduling purposes.</p>
+      <h2>3. Limitations of Liability</h2>
+      <p>NOTNOW is provided "as is" without warranties. We are not liable for any indirect damages.</p>
+      <h2>4. Governing Law</h2>
+      <p>These terms are governed by applicable laws.</p>
+      <h2>5. Contact Us</h2>
+      <p>For questions about these terms, contact itamirltd1@gmail.com</p>
+    </body>
+    </html>
+  `);
+});
+
 // API Routes (Cycle 2+)
 app.use('/api/messages', enforceQuota, messagesRouter);
 app.use('/api/contacts', contactsRouter);
