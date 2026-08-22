@@ -18,6 +18,52 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Validate required environment variables
+function validateEnvironment() {
+  const required = [
+    'DATABASE_URL',
+    'META_API_TOKEN',
+    'META_APP_SECRET',
+    'META_VERIFY_TOKEN',
+    'META_PHONE_NUMBER_ID',
+  ];
+
+  const optional = [
+    'ANTHROPIC_API_KEY',
+    'STRIPE_API_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+    'APP_URL'
+  ];
+
+  const missing = [];
+  const warnings = [];
+
+  required.forEach(key => {
+    if (!process.env[key] || process.env[key].startsWith('your_')) {
+      missing.push(key);
+    }
+  });
+
+  optional.forEach(key => {
+    if (!process.env[key] || process.env[key].startsWith('your_')) {
+      warnings.push(key);
+    }
+  });
+
+  if (missing.length > 0) {
+    console.error('❌ CRITICAL: Missing required environment variables:', missing.join(', '));
+    console.error('Please configure these in .env and restart the server');
+    process.exit(1);
+  }
+
+  if (warnings.length > 0) {
+    console.warn('⚠️  WARNING: Missing optional environment variables:', warnings.join(', '));
+    console.warn('Some features may not work without these values');
+  }
+
+  console.log('✅ Environment validation passed');
+}
+
 // Run migrations on startup
 async function runMigrations() {
   try {
@@ -31,41 +77,85 @@ async function runMigrations() {
   }
 }
 
-// Rate limiting middleware for webhooks (5 requests per 60 seconds per IP)
-const webhookRateLimits = new Map();
-const WEBHOOK_RATE_LIMIT = { max: 100, window: 60000 }; // 100 req/min per IP
+// Rate limiting middleware for webhooks and sends
+const rateLimits = new Map();
+
+function checkRateLimit(key, maxRequests, windowMs) {
+  const now = Date.now();
+
+  if (!rateLimits.has(key)) {
+    rateLimits.set(key, []);
+  }
+
+  const requests = rateLimits.get(key).filter(t => now - t < windowMs);
+  requests.push(now);
+  rateLimits.set(key, requests);
+
+  return requests.length <= maxRequests;
+}
 
 app.use((req, res, next) => {
+  // Rate limit webhook endpoint (100 req/min per IP)
   if (req.path === '/api/meta/webhook') {
     const ip = req.ip;
-    const now = Date.now();
     const key = `${ip}:webhook`;
 
-    if (!webhookRateLimits.has(key)) {
-      webhookRateLimits.set(key, []);
-    }
-
-    const requests = webhookRateLimits.get(key).filter(t => now - t < WEBHOOK_RATE_LIMIT.window);
-    requests.push(now);
-    webhookRateLimits.set(key, requests);
-
-    if (requests.length > WEBHOOK_RATE_LIMIT.max) {
+    if (!checkRateLimit(key, 100, 60000)) {
       return res.status(429).json({ success: false, error: 'Too many requests' });
     }
   }
+
+  // Rate limit WhatsApp send endpoint (50 sends/min per user to prevent spam)
+  if (req.path === '/api/meta/send' && req.userId) {
+    const key = `user:${req.userId}:send`;
+
+    if (!checkRateLimit(key, 50, 60000)) {
+      return res.status(429).json({ success: false, error: 'Too many send requests - rate limited' });
+    }
+  }
+
   next();
 });
 
-// Middleware
-app.use(express.json());
+// Middleware - parse raw body for webhook signature verification
+app.use(express.json({
+  verify: (req, res, buf, encoding) => {
+    req.rawBody = buf.toString(encoding);
+  }
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // CORS & Security headers
 app.use((req, res, next) => {
+  // CORS - restrict to trusted origins only
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'https://notnow.app',
+    process.env.APP_URL || 'http://localhost:3000'
+  ];
+
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-API-Key,X-User-ID');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // Security headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Content-Security-Policy', "default-src 'self'");
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+
   next();
 });
 
@@ -172,9 +262,12 @@ app.use((req, res) => {
 
 // Start server with migrations
 (async () => {
+  validateEnvironment();
   await runMigrations();
   app.listen(PORT, () => {
     console.log(`🚀 NOTNOW Stage 2 server running on port ${PORT}`);
     console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`🔒 Security: Webhook signature validation enabled`);
+    console.log(`🔒 Security: Rate limiting enabled`);
   });
 })();

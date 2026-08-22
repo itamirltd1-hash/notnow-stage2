@@ -52,6 +52,18 @@ router.post('/webhook', async (req, res) => {
 
     const { phone, text, messageId } = messageData;
 
+    // Validate message length (prevent abuse)
+    if (!text || text.length > 4096) {
+      console.warn(`Message rejected: invalid length (${text?.length || 0} chars)`);
+      return;
+    }
+
+    // Sanitize phone number (should be digits and +)
+    if (!/^[\d\+\-\s()]+$/.test(phone)) {
+      console.warn(`Invalid phone format: ${phone}`);
+      return;
+    }
+
     // Extract user context (via phone → contacts lookup)
     await extractWhatsappUserContext(req, res, () => {});
 

@@ -2,23 +2,36 @@ import crypto from 'crypto';
 
 /**
  * Validate Meta webhook signature.
- * Meta sends X-Hub-Signature header with each webhook call.
+ * Meta sends X-Hub-Signature-256 header with each webhook call.
+ * Uses META_APP_SECRET (from Meta App Settings), not META_VERIFY_TOKEN.
+ * META_VERIFY_TOKEN is only for GET verification challenge.
  */
 export function validateMetaWebhookSignature(req) {
-  const token = process.env.META_VERIFY_TOKEN;
+  const appSecret = process.env.META_APP_SECRET;
   const signature = req.headers['x-hub-signature-256'];
 
-  if (!token || !signature) {
+  if (!appSecret || !signature) {
+    console.warn('⚠️ Webhook validation failed: missing secret or signature header');
     return false;
   }
 
+  // Meta sends the request body as raw text for signing
+  // Extract the raw body (before JSON parsing)
+  const body = typeof req.rawBody === 'string' ? req.rawBody : JSON.stringify(req.body);
+
   const hash = crypto
-    .createHmac('sha256', token)
-    .update(JSON.stringify(req.body))
+    .createHmac('sha256', appSecret)
+    .update(body)
     .digest('hex');
 
   const expected = `sha256=${hash}`;
-  return signature === expected;
+
+  if (signature !== expected) {
+    console.error('❌ Invalid webhook signature - possible tampering attempt');
+    return false;
+  }
+
+  return true;
 }
 
 /**

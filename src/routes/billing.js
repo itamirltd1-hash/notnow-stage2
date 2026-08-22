@@ -1,6 +1,6 @@
 import express from 'express';
 import { requireUser } from '../middleware/requireUser.js';
-import { createCheckoutSession, extractMetadataFromWebhook } from '../billing/stripeClient.js';
+import { createCheckoutSession, extractMetadataFromWebhook, verifyWebhookSignature } from '../billing/stripeClient.js';
 import { resetMonthlyUsage } from '../billing/quotaMiddleware.js';
 import pool from '../db/pool.js';
 
@@ -41,13 +41,20 @@ router.post('/checkout', requireUser, async (req, res) => {
  * POST /api/billing/webhook
  * Stripe webhook listener for successful payments.
  * Called when a subscription is created/updated.
+ * Signature verification required to prevent forged events.
  */
 router.post('/webhook', async (req, res) => {
   try {
-    const event = req.body;
+    const signature = req.headers['stripe-signature'];
+    const rawBody = req.rawBody;
 
-    // For now, accept all events (in production, verify signature)
-    // See stripeClient.js verifyWebhookSignature()
+    // Verify Stripe webhook signature
+    if (!verifyWebhookSignature(rawBody, signature)) {
+      console.error('🚨 SECURITY: Rejected webhook with invalid Stripe signature');
+      return res.status(403).json({ success: false, error: 'Invalid signature' });
+    }
+
+    const event = req.body;
 
     // Handle subscription.created or subscription.updated events
     if (event.type === 'customer.subscription.created' || event.type === 'customer.subscription.updated') {

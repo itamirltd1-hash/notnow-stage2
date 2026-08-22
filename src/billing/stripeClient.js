@@ -1,4 +1,5 @@
 import axios from 'axios';
+import crypto from 'crypto';
 
 const STRIPE_API_BASE = 'https://api.stripe.com/v1';
 const STRIPE_KEY = process.env.STRIPE_API_KEY;
@@ -75,12 +76,38 @@ export async function retrieveCheckoutSession(sessionId) {
 }
 
 /**
- * Verify a Stripe webhook signature (for payment.success events).
+ * Verify a Stripe webhook signature.
+ * Uses HMAC-SHA256 with Stripe's webhook secret.
+ * Returns true if signature is valid, false otherwise.
  */
-export function verifyWebhookSignature(payload, signature) {
-  // TODO: Implement actual Stripe signature verification
-  // In production, use Stripe's node library or crypto verification
-  return true; // Placeholder
+export function verifyWebhookSignature(rawBody, signature) {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!secret || !signature || !rawBody) {
+    console.warn('⚠️ Stripe webhook validation failed: missing secret, signature, or body');
+    return false;
+  }
+
+  try {
+    const hash = crypto
+      .createHmac('sha256', secret)
+      .update(rawBody)
+      .digest('hex');
+
+    const expected = `t=${Date.now()},v1=${hash}`;
+
+    // Stripe sends signature as "t=timestamp,v1=hash,..."
+    // We verify the v1 hash
+    if (signature.includes(`v1=${hash}`)) {
+      return true;
+    }
+
+    console.error('❌ Invalid Stripe webhook signature - possible tampering');
+    return false;
+  } catch (error) {
+    console.error('❌ Error verifying Stripe signature:', error.message);
+    return false;
+  }
 }
 
 /**

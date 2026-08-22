@@ -1,5 +1,5 @@
 /**
- * Middleware: Require user ID from request context (session or API key).
+ * Middleware: Require user ID from request context (session, API key, or test override).
  * Attaches req.userId to the request object.
  */
 export function requireUser(req, res, next) {
@@ -10,14 +10,22 @@ export function requireUser(req, res, next) {
   }
 
   // Try API key auth (Enterprise, Cycle 5)
-  if (req.headers['x-api-key']) {
-    // This will be populated in Cycle 5 by API key validation middleware
-    if (req.userId) {
-      return next();
-    }
+  const apiKey = req.headers['x-api-key'];
+  if (apiKey && process.env.VALID_API_KEYS?.includes(apiKey)) {
+    // In production, extract userId from API key mapping
+    // For now, allow with a test user ID
+    req.userId = process.env.TEST_USER_ID || 1;
+    return next();
   }
 
-  return res.status(401).json({ success: false, error: 'Unauthorized' });
+  // Try X-User-ID header for testing (REMOVE IN PRODUCTION)
+  const testUserId = req.headers['x-user-id'];
+  if (testUserId && process.env.NODE_ENV === 'development') {
+    req.userId = parseInt(testUserId, 10);
+    return next();
+  }
+
+  return res.status(401).json({ success: false, error: 'Unauthorized - missing or invalid credentials' });
 }
 
 /**
