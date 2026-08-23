@@ -77,14 +77,18 @@ router.post('/webhook', async (req, res) => {
     const language = detectLanguage(text);
 
     // Parse intent using Claude Haiku
+    console.log(`🧠 Parsing intent for: "${text}"`);
     const intentResult = await parseSchedulingIntent(text, language);
+    console.log(`   Result:`, intentResult);
 
     if (!intentResult.success || !intentResult.intent) {
       // Failed to parse — send error message back
       const errorMsg = intentResult.error || 'Could not understand your message. Try: "Schedule message to [name] at [time]"';
+      console.log(`⚠️  Intent parse failed, sending error:`, errorMsg);
       await sendWhatsAppMessage(phone, errorMsg);
       return;
     }
+    console.log(`✅ Intent: ${intentResult.intent}`);
 
     const { intent, entities, confirmationText } = intentResult;
 
