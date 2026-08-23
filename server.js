@@ -51,9 +51,8 @@ function validateEnvironment() {
   });
 
   if (missing.length > 0) {
-    console.error('❌ CRITICAL: Missing required environment variables:', missing.join(', '));
-    console.error('Please configure these in .env and restart the server');
-    process.exit(1);
+    console.warn('⚠️  WARNING: Missing environment variables:', missing.join(', '));
+    console.warn('Server will start but some features may not work');
   }
 
   if (warnings.length > 0) {
