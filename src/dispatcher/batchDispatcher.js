@@ -11,8 +11,10 @@ const RETRY_DELAYS = [5000, 15000, 60000]; // 5s, 15s, 60s backoff
 export async function dispatchPendingMessages() {
   try {
     const now = new Date().toISOString();
+    console.log(`⏰ Dispatcher running at ${now}`);
 
     // Fetch pending messages that are due for delivery
+    console.log(`🔍 Querying active_queue for pending messages...`);
     const result = await pool.query(
       `SELECT * FROM active_queue
        WHERE status = 'pending' AND scheduled_at <= $1
@@ -20,6 +22,7 @@ export async function dispatchPendingMessages() {
        LIMIT $2`,
       [now, BATCH_SIZE]
     );
+    console.log(`✅ Query successful, found ${result.rows.length} messages`);
 
     const messages = result.rows;
 
@@ -58,7 +61,9 @@ export async function dispatchPendingMessages() {
 
     return { processed: messages.length, sent, failed };
   } catch (error) {
-    console.error('Error in batch dispatcher:', error.message);
+    console.error('❌ Error in batch dispatcher:', error.message);
+    console.error('   Stack:', error.stack);
+    console.error('   Full error:', error);
     return { processed: 0, sent: 0, failed: 0, error: error.message };
   }
 }

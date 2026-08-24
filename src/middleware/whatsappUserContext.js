@@ -20,33 +20,38 @@ import { getUserByPhone } from '../auth/userContextExtractor.js';
  */
 export async function extractWhatsappUserContext(req, res, next) {
   try {
+    console.log(`🔎 Extracting WhatsApp user context...`);
     // Parse incoming Meta webhook
     const entry = req.body?.entry?.[0];
     const changes = entry?.changes?.[0];
     const messages = changes?.value?.messages;
 
     if (!messages || messages.length === 0) {
-      // Not a message event, skip
+      console.log(`⏭️  Not a message event, skipping`);
       return next();
     }
 
     const message = messages[0];
     const senderPhone = message.from;
+    console.log(`📱 Sender phone: ${senderPhone}`);
 
     if (!senderPhone) {
+      console.error(`❌ Missing sender phone in message`);
       return res.status(400).json({ success: false, error: 'Missing sender phone' });
     }
 
     // Look up user by phone number
+    console.log(`🔍 Looking up user by phone...`);
     const user = await getUserByPhone(senderPhone);
 
     if (!user) {
-      // Unknown sender — store context but mark as unregistered
+      console.warn(`⚠️  Unknown sender ${senderPhone} - not in database`);
       req.senderPhone = senderPhone;
       req.userId = null;
       req.isUnknownSender = true;
       return next();
     }
+    console.log(`✅ Found user: ${user.user_id}`);
 
     // Attach user context to request
     req.userId = user.user_id;
