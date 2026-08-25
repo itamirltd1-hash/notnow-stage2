@@ -3,7 +3,7 @@ import { validateMetaWebhookSignature, extractMessageFromWebhook, formatMetaResp
 import { sendWhatsAppMessage } from '../meta/sendHandler.js';
 import { parseSchedulingIntent, detectLanguage } from '../llm/intentParser.js';
 import { extractWhatsappUserContext } from '../middleware/whatsappUserContext.js';
-import { registerOrUpdateContact, getContactNameByPhone } from '../auth/userContextExtractor.js';
+import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender } from '../auth/userContextExtractor.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
 
 const router = express.Router();
@@ -36,6 +36,8 @@ router.get('/webhook', (req, res) => {
  */
 router.post('/webhook', async (req, res) => {
   try {
+    console.log('📥 Incoming webhook:', JSON.stringify(req.body));
+
     // Validate signature
     if (!validateMetaWebhookSignature(req)) {
       return res.status(403).json({ success: false, error: 'Invalid signature' });
@@ -68,9 +70,14 @@ router.post('/webhook', async (req, res) => {
     await extractWhatsappUserContext(req, res, () => {});
 
     if (!req.userId) {
-      // Unknown sender — for now, just log (can implement registration flow later)
-      console.log(`Unknown sender ${phone}: "${text}"`);
-      return;
+      console.log(`🆕 Auto-registering new sender ${phone}`);
+      const newUser = await autoRegisterSender(phone);
+      if (!newUser) {
+        await sendWhatsAppMessage(phone, 'Sorry, could not register your number. Please try again later.');
+        return;
+      }
+      req.userId = newUser.user_id;
+      console.log(`✅ Registered user ${newUser.user_id} for ${phone}`);
     }
 
     // Detect language
@@ -117,8 +124,8 @@ router.post('/webhook', async (req, res) => {
         await sendWhatsAppMessage(phone, 'Intent not recognized. Please try again.');
     }
   } catch (error) {
-    console.error('Error processing webhook:', error.message);
-    res.status(500).json({ success: false, error: 'Internal server error' });
+    // Response was already sent above; only log here.
+    console.error('❌ Error processing webhook:', error.message, error.stack);
   }
 });
 

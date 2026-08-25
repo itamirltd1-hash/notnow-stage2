@@ -26,6 +26,42 @@ export async function getUserByPhone(phoneNumber) {
 }
 
 /**
+ * Auto-onboard a WhatsApp sender we've never seen before.
+ * Creates a user (identified by phone) plus a self-contact so future
+ * lookups in getUserByPhone succeed.
+ */
+export async function autoRegisterSender(phoneNumber) {
+  const normalizedPhone = normalizePhoneNumber(phoneNumber);
+  if (!normalizedPhone) return null;
+
+  const email = `${normalizedPhone.replace('+', '')}@whatsapp.notnow.local`;
+
+  const userResult = await pool.query(
+    `INSERT INTO users (email, tier) VALUES ($1, 'FREE')
+     ON CONFLICT (email) DO UPDATE SET updated_at = NOW()
+     RETURNING user_id, email, tier`,
+    [email]
+  );
+  const user = userResult.rows[0];
+
+  await pool.query(
+    `INSERT INTO subscriptions (user_id, tier, message_count_this_month, month_reset_date)
+     VALUES ($1, 'FREE', 0, CURRENT_DATE)
+     ON CONFLICT (user_id) DO NOTHING`,
+    [user.user_id]
+  );
+
+  await pool.query(
+    `INSERT INTO contacts (user_id, name, phone_number)
+     VALUES ($1, 'Me', $2)
+     ON CONFLICT (user_id, phone_number) DO NOTHING`,
+    [user.user_id, normalizedPhone]
+  );
+
+  return user;
+}
+
+/**
  * Normalize phone number to consistent format.
  * Handles various formats: +972..., 0..., 972...
  */
