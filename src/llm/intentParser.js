@@ -34,7 +34,7 @@ export async function parseSchedulingIntent(userMessage, language = 'he') {
     );
 
     const responseText = response.data.content[0].text;
-    const parsed = JSON.parse(responseText);
+    const parsed = JSON.parse(stripCodeFence(responseText));
 
     return {
       success: true,
@@ -47,6 +47,9 @@ export async function parseSchedulingIntent(userMessage, language = 'he') {
     };
   } catch (error) {
     console.error('Error parsing intent:', error.message);
+    console.error('   Raw Claude response:', error.response?.data
+      ? JSON.stringify(error.response.data)
+      : 'n/a');
     return {
       success: false,
       error: 'Failed to parse message intent',
@@ -57,11 +60,35 @@ export async function parseSchedulingIntent(userMessage, language = 'he') {
 }
 
 /**
+ * Claude often wraps JSON in a ```json fence despite instructions.
+ * Strip it before parsing, and fall back to the outermost {...} block.
+ */
+function stripCodeFence(text) {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  if (fenced) return fenced[1];
+
+  const first = trimmed.indexOf('{');
+  const last = trimmed.lastIndexOf('}');
+  if (first !== -1 && last > first) return trimmed.slice(first, last + 1);
+
+  return trimmed;
+}
+
+/**
  * Build the system prompt for Claude to parse scheduling intents.
  * Tailored to Hebrew-first, but handles Hebrew/English mix.
  */
 function buildSystemPrompt(language) {
+  const nowUtc = new Date();
+  const nowLocal = nowUtc.toLocaleString('sv-SE', { timeZone: 'Asia/Jerusalem' });
+
   return `You are an expert message scheduling assistant. Your job is to parse user messages and extract scheduling intent.
+
+CURRENT TIME REFERENCE (use this to resolve relative times like "tomorrow", "in 2 hours", "מחר"):
+- Current time in Israel (Asia/Jerusalem): ${nowLocal}
+- Current time in UTC: ${nowUtc.toISOString()}
+The user speaks in Israel local time. Convert to UTC for "scheduled_timestamp".
 
 The user will send messages in Hebrew or English asking to schedule messages, cancel messages, list queue, or upgrade tier.
 

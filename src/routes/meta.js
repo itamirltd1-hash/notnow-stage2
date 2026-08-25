@@ -3,7 +3,7 @@ import { validateMetaWebhookSignature, extractMessageFromWebhook, formatMetaResp
 import { sendWhatsAppMessage } from '../meta/sendHandler.js';
 import { parseSchedulingIntent, detectLanguage } from '../llm/intentParser.js';
 import { extractWhatsappUserContext } from '../middleware/whatsappUserContext.js';
-import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender } from '../auth/userContextExtractor.js';
+import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender, normalizePhoneNumber } from '../auth/userContextExtractor.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
 
 const router = express.Router();
@@ -135,7 +135,9 @@ router.post('/webhook', async (req, res) => {
  */
 async function handleScheduleMessage(userId, senderPhone, entities, confirmationText) {
   try {
-    const { recipient_phone, recipient_name, message_body, scheduled_timestamp, delivery_channel } = entities;
+    const { recipient_name, message_body, scheduled_timestamp, delivery_channel } = entities;
+    // Claude may echo the phone in local form (05...) — store it international.
+    const recipient_phone = normalizePhoneNumber(entities.recipient_phone);
 
     if (!recipient_phone || !message_body || !scheduled_timestamp) {
       await sendWhatsAppMessage(senderPhone, 'Missing details. Please include: recipient, message, and time.');

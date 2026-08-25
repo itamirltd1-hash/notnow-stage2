@@ -18,9 +18,9 @@ export async function sendWhatsAppMessage(recipientPhone, messageText) {
   }
 
   try {
-    console.log(`📲 Posting to Meta API: https://graph.instagram.com/v18.0/${phoneNumberId}/messages`);
+    console.log(`📲 Posting to Meta API: https://graph.facebook.com/v18.0/${phoneNumberId}/messages`);
     const response = await axios.post(
-      `https://graph.instagram.com/v18.0/${phoneNumberId}/messages`,
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         messaging_product: 'whatsapp',
         to: recipientPhone,
@@ -67,7 +67,7 @@ export async function sendTemplateMessage(recipientPhone, templateName, template
 
   try {
     const response = await axios.post(
-      `https://graph.instagram.com/v18.0/${phoneNumberId}/messages`,
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         messaging_product: 'whatsapp',
         to: recipientPhone,
