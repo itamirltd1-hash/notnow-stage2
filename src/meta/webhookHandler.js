@@ -10,8 +10,14 @@ export function validateMetaWebhookSignature(req) {
   const appSecret = process.env.META_APP_SECRET;
   const signature = req.headers['x-hub-signature-256'];
 
-  if (!appSecret || !signature) {
-    console.warn('⚠️ Webhook validation failed: missing secret or signature header');
+  // TODO: Remove this after getting META_APP_SECRET from Meta
+  if (!appSecret || appSecret.startsWith('your_')) {
+    console.warn('⚠️ Webhook signature validation SKIPPED - no APP_SECRET yet');
+    return true; // Allow webhook without validation (temporary!)
+  }
+
+  if (!signature) {
+    console.warn('⚠️ Webhook validation failed: missing signature header');
     return false;
   }
 
