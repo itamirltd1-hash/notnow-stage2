@@ -139,7 +139,31 @@ Response: {
   "error_text": null
 }
 
-Always return ONLY valid JSON, no extra text.`;
+User (Hebrew, no quotes around the message): "שלח לדני 0508765480 מחר ב9:00 פגישה"
+Response: {
+  "intent": "SCHEDULE_MESSAGE",
+  "confidence": 0.9,
+  "language": "he",
+  "entities": {
+    "recipient_phone": "+972508765480",
+    "recipient_name": "דני",
+    "message_body": "פגישה",
+    "scheduled_timestamp": "2026-08-26T06:00:00Z",
+    "delivery_channel": "whatsapp"
+  },
+  "confirmation_text": "קיבלתי! תזמנתי לדני (0508765480) מחר ב-09:00 את ההודעה: פגישה",
+  "error_text": null
+}
+
+RULES:
+- The message is NOT always in quotes. Whatever text remains after removing
+  the recipient and the time IS the message body. Never return null for
+  message_body when any such text exists.
+- Convert Israeli local numbers (0XXXXXXXXX) to international form (+972XXXXXXXXX).
+- Always resolve relative times against the CURRENT TIME REFERENCE above and
+  output UTC. Israel is UTC+3 in summer.
+
+Always return ONLY valid JSON, no markdown fences, no extra text.`;
 }
 
 /**

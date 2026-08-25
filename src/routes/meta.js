@@ -139,8 +139,18 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
     // Claude may echo the phone in local form (05...) — store it international.
     const recipient_phone = normalizePhoneNumber(entities.recipient_phone);
 
-    if (!recipient_phone || !message_body || !scheduled_timestamp) {
-      await sendWhatsAppMessage(senderPhone, 'Missing details. Please include: recipient, message, and time.');
+    console.log('   Entities:', JSON.stringify(entities));
+
+    const missing = [];
+    if (!recipient_phone) missing.push('מספר הנמען');
+    if (!message_body) missing.push('תוכן ההודעה');
+    if (!scheduled_timestamp) missing.push('מועד השליחה');
+
+    if (missing.length > 0) {
+      await sendWhatsAppMessage(
+        senderPhone,
+        `חסר לי ${missing.join(' ו')}.\n\nדוגמה:\nשלח לדני 0508765480 מחר ב-9:00 "נתראה בפגישה"`
+      );
       return;
     }
 
