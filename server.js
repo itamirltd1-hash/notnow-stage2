@@ -60,6 +60,18 @@ function validateEnvironment() {
     console.warn('Some features may not work without these values');
   }
 
+  // Diagnostic: report shape of each credential without leaking its value.
+  const shape = (key) => {
+    const v = process.env[key];
+    if (!v) return `${key}=MISSING`;
+    if (v.startsWith('your_')) return `${key}=PLACEHOLDER`;
+    return `${key}=len:${v.length} start:${v.slice(0, 4)}`;
+  };
+  console.log('🔧 Credential shapes:');
+  ['META_APP_SECRET', 'META_API_TOKEN', 'WEBHOOK_VERIFY_TOKEN', 'ANTHROPIC_API_KEY']
+    .forEach(k => console.log(`   ${shape(k)}`));
+  console.log(`   META_PHONE_NUMBER_ID=${process.env.META_PHONE_NUMBER_ID || 'MISSING'}`);
+
   console.log('✅ Environment validation passed');
 }
 
