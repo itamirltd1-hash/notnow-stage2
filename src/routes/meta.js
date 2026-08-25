@@ -16,7 +16,7 @@ router.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-  const verifyToken = process.env.META_VERIFY_TOKEN;
+  const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN;
 
   if (!verifyToken) {
     return res.status(500).json({ success: false, error: 'META_VERIFY_TOKEN not configured' });
