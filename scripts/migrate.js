@@ -8,10 +8,14 @@ async function runMigrations() {
   try {
     console.log('🔄 Running migrations...');
 
-    const migrationFile = path.join(__dirname, '../src/db/migrations/001-multitenancy.sql');
-    const sql = fs.readFileSync(migrationFile, 'utf-8');
+    const dir = path.join(__dirname, '../src/db/migrations');
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
 
-    await pool.query(sql);
+    for (const file of files) {
+      const sql = fs.readFileSync(path.join(dir, file), 'utf-8');
+      await pool.query(sql);
+      console.log(`   ✓ ${file}`);
+    }
 
     console.log('✅ Migrations completed successfully');
     process.exit(0);

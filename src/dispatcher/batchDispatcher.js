@@ -35,21 +35,27 @@ export async function dispatchPendingMessages() {
 
     for (const message of messages) {
       try {
-        // Send the message (placeholder for Cycle 3+ actual sends)
-        await sendMessage(message);
+        const sendResult = await sendMessage(message);
         sent++;
 
-        // Mark as sent
+        // 'sent' here means Meta accepted it, not that it arrived. The real
+        // outcome comes back later on the statuses webhook, matched by this id.
         await pool.query(
-          'UPDATE active_queue SET status = $1, updated_at = NOW() WHERE queue_id = $2',
-          ['sent', message.queue_id]
+          `UPDATE active_queue
+              SET status = 'sent',
+                  provider_message_id = $1,
+                  sent_at = NOW(),
+                  updated_at = NOW()
+            WHERE queue_id = $2`,
+          [sendResult?.messageId || null, message.queue_id]
         );
 
         // Log to activity log
         await logActivity(message.user_id, 'message_sent', {
           queue_id: message.queue_id,
           recipient: message.recipient_phone,
-          channel: message.channel
+          channel: message.channel,
+          provider_message_id: sendResult?.messageId || null
         });
       } catch (error) {
         failed++;
@@ -57,7 +63,10 @@ export async function dispatchPendingMessages() {
       }
     }
 
-    console.log(`📤 Dispatcher batch: processed=${messages.length}, sent=${sent}, failed=${failed}`);
+    console.log(
+      `📤 Dispatcher batch: processed=${messages.length}, ` +
+      `accepted=${sent}, rejected=${failed} (delivery confirmed separately)`
+    );
 
     return { processed: messages.length, sent, failed };
   } catch (error) {
@@ -156,7 +165,10 @@ export async function getDispatcherMetrics() {
         (SELECT COUNT(*) FROM active_queue WHERE status = 'pending') as pending_count,
         (SELECT COUNT(*) FROM active_queue WHERE status = 'sent') as sent_count,
         (SELECT COUNT(*) FROM active_queue WHERE status = 'failed') as failed_count,
-        (SELECT COUNT(*) FROM active_queue WHERE retry_count > 0) as retried_count
+        (SELECT COUNT(*) FROM active_queue WHERE retry_count > 0) as retried_count,
+        (SELECT COUNT(*) FROM active_queue WHERE delivered_at IS NOT NULL) as delivered_count,
+        (SELECT COUNT(*) FROM active_queue WHERE read_at IS NOT NULL) as read_count,
+        (SELECT COUNT(*) FROM active_queue WHERE error_code IS NOT NULL) as delivery_error_count
     `);
 
     return result.rows[0];

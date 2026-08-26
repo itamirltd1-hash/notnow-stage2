@@ -79,9 +79,14 @@ function validateEnvironment() {
 async function runMigrations() {
   try {
     console.log('🔄 Running database migrations...');
-    const migrationFile = path.join(__dirname, 'src/db/migrations/001-multitenancy.sql');
-    const sql = fs.readFileSync(migrationFile, 'utf-8');
-    await pool.query(sql);
+    const dir = path.join(__dirname, 'src/db/migrations');
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
+
+    for (const file of files) {
+      const sql = fs.readFileSync(path.join(dir, file), 'utf-8');
+      await pool.query(sql);
+      console.log(`   ✓ ${file}`);
+    }
     console.log('✅ Migrations completed successfully');
   } catch (error) {
     console.error('⚠️  Migration warning (tables may already exist):', error.message);

@@ -1,5 +1,6 @@
 import express from 'express';
-import { validateMetaWebhookSignature, extractMessageFromWebhook, formatMetaResponse } from '../meta/webhookHandler.js';
+import { validateMetaWebhookSignature, extractMessageFromWebhook, extractStatusesFromWebhook, formatMetaResponse } from '../meta/webhookHandler.js';
+import { recordDeliveryStatuses } from '../meta/deliveryStatus.js';
 import { sendWhatsAppMessage } from '../meta/sendHandler.js';
 import { parseSchedulingIntent, detectLanguage } from '../llm/intentParser.js';
 import { extractWhatsappUserContext } from '../middleware/whatsappUserContext.js';
@@ -46,6 +47,13 @@ router.post('/webhook', async (req, res) => {
     // Acknowledge receipt (Meta requires quick 200 response)
     res.status(200).json({ success: true });
 
+    // Delivery outcomes arrive here, separately from the send response
+    const statuses = extractStatusesFromWebhook(req.body);
+    if (statuses.length > 0) {
+      await recordDeliveryStatuses(statuses);
+      return;
+    }
+
     // Extract message from webhook
     const messageData = extractMessageFromWebhook(req.body);
     if (!messageData) {
@@ -88,10 +96,20 @@ router.post('/webhook', async (req, res) => {
     const intentResult = await parseSchedulingIntent(text, language);
     console.log(`   Result:`, intentResult);
 
-    if (!intentResult.success || !intentResult.intent) {
-      // Failed to parse — send error message back
-      const errorMsg = intentResult.error || 'Could not understand your message. Try: "Schedule message to [name] at [time]"';
-      console.log(`⚠️  Intent parse failed, sending error:`, errorMsg);
+    // A low-confidence guess is a misunderstanding, not an instruction —
+    // ask rather than act on it.
+    const MIN_CONFIDENCE = 0.5;
+    const tooUncertain = (intentResult.confidence ?? 0) < MIN_CONFIDENCE;
+
+    if (!intentResult.success || !intentResult.intent || tooUncertain) {
+      // Claude usually phrases the clarification better, and in the user's
+      // own language — prefer it over our generic fallback.
+      const errorMsg = intentResult.error
+        || 'לא הבנתי. נסה למשל: שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"';
+      console.log(
+        `⚠️  Not acting (success=${intentResult.success}, ` +
+        `confidence=${intentResult.confidence}), replying:`, errorMsg
+      );
       await sendWhatsAppMessage(phone, errorMsg);
       return;
     }

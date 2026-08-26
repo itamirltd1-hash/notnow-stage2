@@ -74,6 +74,35 @@ export function extractMessageFromWebhook(body) {
 }
 
 /**
+ * Extract delivery-status events from a Meta webhook payload.
+ * Meta reports the real outcome of a send here, not in the send response.
+ * Returns [{ messageId, status, timestamp, errorCode, errorMessage }].
+ */
+export function extractStatusesFromWebhook(body) {
+  try {
+    const statuses = body?.entry?.[0]?.changes?.[0]?.value?.statuses;
+    if (!Array.isArray(statuses) || statuses.length === 0) {
+      return [];
+    }
+
+    return statuses.map(s => {
+      const err = s.errors?.[0];
+      return {
+        messageId: s.id,
+        status: s.status,
+        timestamp: s.timestamp,
+        recipient: s.recipient_id,
+        errorCode: err?.code ?? null,
+        errorMessage: err?.error_data?.details || err?.title || null
+      };
+    });
+  } catch (error) {
+    console.error('Error extracting statuses from webhook:', error.message);
+    return [];
+  }
+}
+
+/**
  * Format response to send back to user via Meta API.
  * Used to confirm actions ("Got it! Scheduled message to...").
  */
