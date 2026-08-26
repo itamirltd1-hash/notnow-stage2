@@ -55,6 +55,51 @@ export async function sendWhatsAppMessage(recipientPhone, messageText) {
 }
 
 /**
+ * Send a voice note by re-using the media id Meta gave us on the way in.
+ *
+ * Audio cannot travel inside a template, so this only reaches someone inside
+ * the 24-hour service window — callers must check before choosing this path.
+ */
+export async function sendAudioMessage(recipientPhone, mediaId) {
+  const apiToken = process.env.META_API_TOKEN;
+  const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
+
+  if (!apiToken || !phoneNumberId) {
+    throw new Error('META_API_TOKEN or META_PHONE_NUMBER_ID not configured');
+  }
+
+  console.log(`🔊 Sending voice note ${mediaId} to ${recipientPhone}`);
+
+  try {
+    const response = await axios.post(
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to: recipientPhone,
+        type: 'audio',
+        audio: { id: mediaId }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      }
+    );
+
+    const messageId = response.data.messages?.[0]?.id;
+    console.log(`✅ Voice note sent! ID: ${messageId}`);
+    return { success: true, messageId, timestamp: new Date().toISOString() };
+  } catch (error) {
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    console.error(`❌ Meta Audio Error (${recipientPhone}):`, errorMsg);
+    console.error(`   Full error:`, error.response?.data);
+    throw new Error(`Failed to send voice note: ${errorMsg}`);
+  }
+}
+
+/**
  * Send an approved template message.
  *
  * Templates are the only way to reach someone outside the 24-hour service

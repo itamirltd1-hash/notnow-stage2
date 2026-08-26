@@ -56,17 +56,24 @@ export function extractMessageFromWebhook(body) {
 
     const message = messages[0];
 
-    // Only process text messages for now (Cycle 3)
-    if (message.type !== 'text') {
-      return null;
+    const base = {
+      phone: message.from,
+      messageId: message.id,
+      timestamp: message.timestamp,
+      type: message.type
+    };
+
+    if (message.type === 'text') {
+      return { ...base, text: message.text?.body, mediaId: null };
     }
 
-    return {
-      phone: message.from,
-      text: message.text?.body,
-      messageId: message.id,
-      timestamp: message.timestamp
-    };
+    // WhatsApp voice notes arrive as 'audio' with voice: true; a forwarded
+    // audio file arrives the same way without it. Both are transcribable.
+    if (message.type === 'audio') {
+      return { ...base, text: null, mediaId: message.audio?.id };
+    }
+
+    return null;
   } catch (error) {
     console.error('Error extracting message from webhook:', error.message);
     return null;

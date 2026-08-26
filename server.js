@@ -69,7 +69,7 @@ function validateEnvironment() {
     return `${key}=len:${v.length} start:${v.slice(0, 4)}`;
   };
   console.log('🔧 Credential shapes:');
-  ['META_APP_SECRET', 'META_API_TOKEN', 'WEBHOOK_VERIFY_TOKEN', 'ANTHROPIC_API_KEY']
+  ['META_APP_SECRET', 'META_API_TOKEN', 'WEBHOOK_VERIFY_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY']
     .forEach(k => console.log(`   ${shape(k)}`));
   console.log(`   META_PHONE_NUMBER_ID=${process.env.META_PHONE_NUMBER_ID || 'MISSING'}`);
 

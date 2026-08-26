@@ -9,6 +9,9 @@ import { recordInboundMessage } from '../meta/serviceWindow.js';
 import { getConsentStatus, requestConsent, handleConsentReply } from '../meta/consent.js';
 import { findGroupsByName, getGroupMembers, listGroups } from '../groups/groupService.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
+import { downloadMedia } from '../meta/mediaDownload.js';
+import { transcribeAudio, isTranscriptionAvailable } from '../llm/transcriber.js';
+import { storePendingVoice, resolvePendingVoice } from '../meta/voiceFlow.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
 
 const router = express.Router();
@@ -64,17 +67,17 @@ router.post('/webhook', async (req, res) => {
       return; // Not a text message, skip
     }
 
-    const { phone, text, messageId } = messageData;
-
-    // Validate message length (prevent abuse)
-    if (!text || text.length > 4096) {
-      console.warn(`Message rejected: invalid length (${text?.length || 0} chars)`);
-      return;
-    }
+    const { phone, type, mediaId } = messageData;
+    let { text } = messageData;
 
     // Sanitize phone number (should be digits and +)
     if (!/^[\d\+\-\s()]+$/.test(phone)) {
       console.warn(`Invalid phone format: ${phone}`);
+      return;
+    }
+
+    if (type === 'text' && (!text || text.length > 4096)) {
+      console.warn(`Message rejected: invalid length (${text?.length || 0} chars)`);
       return;
     }
 
@@ -83,7 +86,7 @@ router.post('/webhook', async (req, res) => {
 
     // A recipient answering "כן" or "הסר" is not issuing a command — resolve
     // consent before anything can mistake them for a tenant and register them.
-    if (await handleConsentReply(phone, text)) {
+    if (type === 'text' && await handleConsentReply(phone, text)) {
       return;
     }
 
@@ -99,6 +102,23 @@ router.post('/webhook', async (req, res) => {
       }
       req.userId = newUser.user_id;
       console.log(`✅ Registered user ${newUser.user_id} for ${phone}`);
+    }
+
+    // A voice note has to become text before anything can be parsed from it.
+    if (type === 'audio') {
+      text = await handleVoiceNote(req.userId, phone, mediaId);
+      if (!text) return; // the sender already got an explanation
+    }
+
+    // "טקסט" or "קול" answers the question a voice note just asked.
+    const voiceChoice = await resolvePendingVoice(phone, text);
+    if (voiceChoice) {
+      console.log(`🎙️  Sender chose to deliver the ${voiceChoice.choice}`);
+      await handleScheduleMessage(
+        req.userId, phone, voiceChoice.entities,
+        voiceChoice.confirmationText, voiceChoice.mediaId
+      );
+      return;
     }
 
     // A bare "קבוצות" is a lookup, not a scheduling request — answering it
@@ -174,6 +194,67 @@ router.post('/webhook', async (req, res) => {
 });
 
 /**
+ * Turn an incoming voice note into an actionable request.
+ *
+ * The recording usually carries the whole command, so it is transcribed and
+ * parsed straight away — then the sender is asked which form to deliver: the
+ * words as text, or the recording itself. Returns the transcript only when it
+ * is not a scheduling request and should continue through normal handling;
+ * otherwise it has already replied and returns null.
+ */
+async function handleVoiceNote(userId, phone, mediaId) {
+  if (!mediaId) {
+    await sendWhatsAppMessage(phone, 'לא הצלחתי לקרוא את ההקלטה. נסה לשלוח שוב.');
+    return null;
+  }
+
+  if (!isTranscriptionAvailable()) {
+    await sendWhatsAppMessage(phone, 'תמלול הודעות קוליות עדיין לא זמין. שלח את הבקשה כטקסט.');
+    return null;
+  }
+
+  let transcript;
+  try {
+    const audio = await downloadMedia(mediaId);
+    transcript = await transcribeAudio(audio.buffer, audio.mimeType, 'he');
+  } catch (error) {
+    console.error('Voice note failed:', error.message);
+    await sendWhatsAppMessage(phone, 'לא הצלחתי לתמלל את ההקלטה. נסה שוב או שלח כטקסט.');
+    return null;
+  }
+
+  if (!transcript) {
+    await sendWhatsAppMessage(phone, 'ההקלטה יצאה ריקה. נסה להקליט שוב.');
+    return null;
+  }
+
+  const intentResult = await parseSchedulingIntent(transcript, 'he');
+
+  // Not a scheduling request — let the normal path answer it.
+  if (!intentResult.success || intentResult.intent !== 'SCHEDULE_MESSAGE'
+      || (intentResult.confidence ?? 0) < 0.5) {
+    return transcript;
+  }
+
+  await storePendingVoice(
+    userId, phone, mediaId, transcript,
+    intentResult.entities, intentResult.confirmationText
+  );
+
+  await sendWhatsAppMessage(
+    phone,
+    `תמללתי: "${transcript}"\n\n` +
+    `מה לשלוח לנמען?\n` +
+    `• "טקסט" — את המילים כהודעת טקסט\n` +
+    `• "קול" — את ההקלטה המקורית\n\n` +
+    `שים לב: הקלטה מגיעה רק למי שכתב לבוט ב-24 השעות האחרונות. ` +
+    `אחרת תישלח גרסת הטקסט.`
+  );
+
+  return null;
+}
+
+/**
  * Work out who a scheduling request is actually addressed to.
  *
  * Returns { recipients } once resolved, or { reply } with a question when the
@@ -237,7 +318,7 @@ async function resolveRecipients(userId, entities) {
  * into an individual 1-on-1 message per member, each with its own queue row,
  * consent state and delivery status.
  */
-async function handleScheduleMessage(userId, senderPhone, entities, confirmationText) {
+async function handleScheduleMessage(userId, senderPhone, entities, confirmationText, mediaId = null) {
   try {
     const { message_body, scheduled_timestamp, delivery_channel } = entities;
     console.log('   Entities:', JSON.stringify(entities));
@@ -310,13 +391,13 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
       const result = await userQuery(
         userId,
         `INSERT INTO active_queue
-         (user_id, recipient_phone, recipient_name, message_body, channel, scheduled_at, status, group_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (user_id, recipient_phone, recipient_name, message_body, channel, scheduled_at, status, group_id, media_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING queue_id`,
         [
           recipient.phone, recipient.name, message_body,
           delivery_channel || 'whatsapp', scheduled_timestamp, status,
-          group?.group_id || null
+          group?.group_id || null, mediaId
         ]
       );
 

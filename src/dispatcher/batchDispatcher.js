@@ -1,5 +1,5 @@
 import pool from '../db/pool.js';
-import { sendWhatsAppMessage, sendTemplateMessage } from '../meta/sendHandler.js';
+import { sendWhatsAppMessage, sendTemplateMessage, sendAudioMessage } from '../meta/sendHandler.js';
 import { isWithinServiceWindow } from '../meta/serviceWindow.js';
 
 const BATCH_SIZE = 100;
@@ -88,13 +88,22 @@ export async function dispatchPendingMessages() {
  * Returns success or throws error.
  */
 async function sendMessage(message) {
-  const { channel, recipient_phone, recipient_name, message_body } = message;
+  const { channel, recipient_phone, recipient_name, message_body, media_id } = message;
 
   if (channel === 'whatsapp') {
     // Free-form text reaches only people who wrote to us in the last 24 hours.
     // Everyone else must be reached through the approved template.
     if (await isWithinServiceWindow(recipient_phone)) {
+      // A recording can only travel inside the window — the sender was told
+      // that when they chose it, so falling back to text here is expected.
+      if (media_id) {
+        return await sendAudioMessage(recipient_phone, media_id);
+      }
       return await sendWhatsAppMessage(recipient_phone, message_body);
+    }
+
+    if (media_id) {
+      console.log(`   ${recipient_phone} is outside the window — sending text instead of the recording`);
     }
 
     console.log(`   ${recipient_phone} is outside the 24h window — using template`);
