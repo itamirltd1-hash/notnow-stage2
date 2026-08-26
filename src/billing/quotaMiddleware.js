@@ -50,8 +50,9 @@ export async function checkUserQuota(userId) {
 
 /**
  * Increment user's monthly message count.
+ * Group sends bill per recipient, so `count` is the number of people reached.
  */
-export async function incrementMonthlyUsage(userId) {
+export async function incrementMonthlyUsage(userId, count = 1) {
   try {
     const currentMonth = new Date().toISOString().split('T')[0].slice(0, 7) + '-01';
 
@@ -62,11 +63,11 @@ export async function incrementMonthlyUsage(userId) {
     // Increment or create usage record
     const result = await pool.query(
       `INSERT INTO monthly_usage (user_id, month, message_count, tier_snapshot)
-       VALUES ($1, $2, 1, $3)
+       VALUES ($1, $2, $4, $3)
        ON CONFLICT (user_id, month) DO UPDATE
-       SET message_count = message_count + 1
+       SET message_count = monthly_usage.message_count + $4
        RETURNING message_count`,
-      [userId, currentMonth, tier]
+      [userId, currentMonth, tier, count]
     );
 
     return result.rows[0].message_count;

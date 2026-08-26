@@ -101,6 +101,8 @@ For each message, respond ONLY with a valid JSON object in this exact format:
   "entities": {
     "recipient_phone": "+972..." or null (the person to send the message to),
     "recipient_name": "Name" or null,
+    "recipient_group": "Group name" or null (set ONLY when the user names a
+      group, e.g. "לקבוצת צוות" → "צוות"; never together with recipient_name),
     "message_body": "The exact message to send" or null,
     "scheduled_timestamp": "2026-08-01T17:00:00Z" (ISO 8601) or null,
     "delivery_channel": "whatsapp" | "gmail" (default: whatsapp)
@@ -155,7 +157,26 @@ Response: {
   "error_text": null
 }
 
+User (Hebrew, addressing a saved group): "תשלח לקבוצת צוות מחר ב8 ״בוקר טוב״"
+Response: {
+  "intent": "SCHEDULE_MESSAGE",
+  "confidence": 0.92,
+  "language": "he",
+  "entities": {
+    "recipient_group": "צוות",
+    "recipient_phone": null,
+    "recipient_name": null,
+    "message_body": "בוקר טוב",
+    "scheduled_timestamp": "2026-08-27T05:00:00Z",
+    "delivery_channel": "whatsapp"
+  },
+  "confirmation_text": "קיבלתי! תזמנתי לקבוצת צוות מחר ב-08:00 את ההודעה: בוקר טוב",
+  "error_text": null
+}
+
 RULES:
+- "קבוצת X" / "לקבוצה X" means recipient_group, not recipient_name. Strip the
+  word "קבוצת" and any leading ל from the name itself.
 - The message is NOT always in quotes. Whatever text remains after removing
   the recipient and the time IS the message body. Never return null for
   message_body when any such text exists.

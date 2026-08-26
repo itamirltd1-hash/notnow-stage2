@@ -6,6 +6,9 @@ import { parseSchedulingIntent, detectLanguage } from '../llm/intentParser.js';
 import { extractWhatsappUserContext } from '../middleware/whatsappUserContext.js';
 import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender, normalizePhoneNumber, findContactsByName } from '../auth/userContextExtractor.js';
 import { recordInboundMessage } from '../meta/serviceWindow.js';
+import { getConsentStatus, requestConsent, handleConsentReply } from '../meta/consent.js';
+import { findGroupsByName, getGroupMembers, listGroups } from '../groups/groupService.js';
+import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
 
 const router = express.Router();
@@ -78,6 +81,12 @@ router.post('/webhook', async (req, res) => {
     // This inbound message opens a 24-hour window for free-form replies
     await recordInboundMessage(phone);
 
+    // A recipient answering "כן" or "הסר" is not issuing a command — resolve
+    // consent before anything can mistake them for a tenant and register them.
+    if (await handleConsentReply(phone, text)) {
+      return;
+    }
+
     // Extract user context (via phone → contacts lookup)
     await extractWhatsappUserContext(req, res, () => {});
 
@@ -90,6 +99,19 @@ router.post('/webhook', async (req, res) => {
       }
       req.userId = newUser.user_id;
       console.log(`✅ Registered user ${newUser.user_id} for ${phone}`);
+    }
+
+    // A bare "קבוצות" is a lookup, not a scheduling request — answering it
+    // directly avoids spending a model call on it.
+    if (/^\s*(קבוצות|groups)\s*$/i.test(text)) {
+      const groups = await listGroups(req.userId);
+      await sendWhatsAppMessage(
+        phone,
+        groups.length === 0
+          ? 'אין לך קבוצות שמורות עדיין.'
+          : 'הקבוצות שלך:\n' + groups.map(g => `• ${g.name} (${g.member_count})`).join('\n')
+      );
+      return;
     }
 
     // Detect language
@@ -152,45 +174,90 @@ router.post('/webhook', async (req, res) => {
 });
 
 /**
+ * Work out who a scheduling request is actually addressed to.
+ *
+ * Returns { recipients } once resolved, or { reply } with a question when the
+ * request is ambiguous or names someone we have no number for.
+ */
+async function resolveRecipients(userId, entities) {
+  const groupName = entities.recipient_group;
+
+  if (groupName) {
+    const { match, candidates } = await findGroupsByName(userId, groupName);
+
+    if (candidates.length > 1) {
+      const list = candidates.map(g => `• ${g.name}`).join('\n');
+      return { reply: `יש לי כמה קבוצות בשם הזה. לאיזו?\n\n${list}` };
+    }
+    if (!match) {
+      return { reply: `אין לי קבוצה בשם "${groupName}". שלח "קבוצות" כדי לראות מה שמור אצלי.` };
+    }
+
+    const members = await getGroupMembers(userId, match.group_id);
+    if (members.length === 0) {
+      return { reply: `הקבוצה "${match.name}" ריקה. הוסף אליה אנשי קשר קודם.` };
+    }
+
+    return {
+      recipients: members.map(m => ({ phone: m.phone_number, name: m.name })),
+      group: match
+    };
+  }
+
+  let recipientName = entities.recipient_name;
+  // Claude may echo the phone in local form (05...) — store it international.
+  let recipientPhone = normalizePhoneNumber(entities.recipient_phone);
+
+  // People say "שלח למירית", not a phone number. Resolve the name against
+  // the contacts this user already has before asking them to type digits.
+  if (!recipientPhone && recipientName) {
+    const { match, candidates } = await findContactsByName(userId, recipientName);
+
+    if (match) {
+      recipientPhone = match.phone_number;
+      recipientName = match.name;
+      console.log(`   Resolved "${entities.recipient_name}" → ${recipientPhone}`);
+    } else if (candidates.length > 1) {
+      const list = candidates.map(c => `• ${c.name} — ${c.phone_number}`).join('\n');
+      return { reply: `יש לי כמה אנשי קשר בשם הזה. למי מהם?\n\n${list}` };
+    }
+  }
+
+  if (!recipientPhone) {
+    return { recipients: [], missingRecipientName: recipientName };
+  }
+
+  return { recipients: [{ phone: recipientPhone, name: recipientName }] };
+}
+
+/**
  * Handle SCHEDULE_MESSAGE intent.
- * Queue the message and send confirmation.
+ *
+ * A group is a saved list, not a WhatsApp group chat: one command fans out
+ * into an individual 1-on-1 message per member, each with its own queue row,
+ * consent state and delivery status.
  */
 async function handleScheduleMessage(userId, senderPhone, entities, confirmationText) {
   try {
     const { message_body, scheduled_timestamp, delivery_channel } = entities;
-    let { recipient_name } = entities;
-    // Claude may echo the phone in local form (05...) — store it international.
-    let recipient_phone = normalizePhoneNumber(entities.recipient_phone);
-
     console.log('   Entities:', JSON.stringify(entities));
 
-    // People say "שלח למירית", not a phone number. Resolve the name against
-    // the contacts this user already has before asking them to type digits.
-    if (!recipient_phone && recipient_name) {
-      const { match, candidates } = await findContactsByName(userId, recipient_name);
-
-      if (match) {
-        recipient_phone = match.phone_number;
-        recipient_name = match.name;
-        console.log(`   Resolved "${entities.recipient_name}" → ${recipient_phone}`);
-      } else if (candidates.length > 1) {
-        const list = candidates.map(c => `• ${c.name} — ${c.phone_number}`).join('\n');
-        await sendWhatsAppMessage(
-          senderPhone,
-          `יש לי כמה אנשי קשר בשם הזה. למי מהם?\n\n${list}`
-        );
-        return;
-      }
+    const resolved = await resolveRecipients(userId, entities);
+    if (resolved.reply) {
+      await sendWhatsAppMessage(senderPhone, resolved.reply);
+      return;
     }
 
+    const { recipients, group } = resolved;
+
     const missing = [];
-    if (!recipient_phone) missing.push('מספר הנמען');
+    if (recipients.length === 0) missing.push('מספר הנמען');
     if (!message_body) missing.push('תוכן ההודעה');
     if (!scheduled_timestamp) missing.push('מועד השליחה');
 
     if (missing.length > 0) {
-      const hint = (!recipient_phone && recipient_name)
-        ? `\n\nאין לי מספר שמור עבור ${recipient_name}. שלח פעם אחת עם המספר, ואשמור אותו.`
+      const hint = resolved.missingRecipientName
+        ? `\n\nאין לי מספר שמור עבור ${resolved.missingRecipientName}. שלח פעם אחת עם המספר, ואשמור אותו.`
         : '';
       await sendWhatsAppMessage(
         senderPhone,
@@ -212,27 +279,109 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
       return;
     }
 
-    // Register/update contact if needed
-    await registerOrUpdateContact(userId, recipient_phone, recipient_name);
+    // Each recipient costs one message, so a group of ten costs ten.
+    const quota = await checkUserQuota(userId);
+    if (!quota.allowed || quota.remaining < recipients.length) {
+      await sendWhatsAppMessage(
+        senderPhone,
+        `המכסה החודשית לא מספיקה: נדרשות ${recipients.length} הודעות ונשארו ${quota.remaining ?? 0} ` +
+        `מתוך ${quota.limit ?? '?'} (${quota.tier ?? 'FREE'}).`
+      );
+      return;
+    }
 
-    // Insert into queue
-    const result = await userQuery(
-      userId,
-      `INSERT INTO active_queue
-       (user_id, recipient_phone, recipient_name, message_body, channel, scheduled_at, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
-       RETURNING queue_id`,
-      [recipient_phone, recipient_name, message_body, delivery_channel || 'whatsapp', scheduled_timestamp]
+    const queued = [];
+    const awaitingConsent = [];
+    const declined = [];
+
+    for (const recipient of recipients) {
+      await registerOrUpdateContact(userId, recipient.phone, recipient.name);
+      const consent = await getConsentStatus(userId, recipient.phone);
+
+      if (consent === 'declined') {
+        declined.push(recipient.name || recipient.phone);
+        continue;
+      }
+
+      // Nobody is messaged before they agree. The row waits in the queue and
+      // is released — or cancelled — by their answer.
+      const status = consent === 'granted' ? 'pending' : 'awaiting_consent';
+
+      const result = await userQuery(
+        userId,
+        `INSERT INTO active_queue
+         (user_id, recipient_phone, recipient_name, message_body, channel, scheduled_at, status, group_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING queue_id`,
+        [
+          recipient.phone, recipient.name, message_body,
+          delivery_channel || 'whatsapp', scheduled_timestamp, status,
+          group?.group_id || null
+        ]
+      );
+
+      if (status === 'pending') {
+        queued.push(recipient.name || recipient.phone);
+      } else {
+        awaitingConsent.push(recipient.name || recipient.phone);
+        if (consent === 'unknown') {
+          await requestConsent(userId, recipient.phone, 'משתמש NotNow');
+        }
+      }
+
+      console.log(`   queue_id=${result.rows[0].queue_id} → ${recipient.phone} (${status})`);
+    }
+
+    const scheduledCount = queued.length + awaitingConsent.length;
+    if (scheduledCount > 0) {
+      await incrementMonthlyUsage(userId, scheduledCount);
+    }
+
+    await sendWhatsAppMessage(
+      senderPhone,
+      buildScheduleConfirmation({ group, confirmationText, queued, awaitingConsent, declined })
     );
 
-    // Send confirmation to user
-    await sendWhatsAppMessage(senderPhone, confirmationText);
-
-    console.log(`✅ Message queued: user=${userId}, queue_id=${result.rows[0].queue_id}`);
+    console.log(
+      `✅ Scheduled: user=${userId}, ready=${queued.length}, ` +
+      `awaiting consent=${awaitingConsent.length}, declined=${declined.length}`
+    );
   } catch (error) {
-    console.error('Error scheduling message:', error.message);
-    await sendWhatsAppMessage(senderPhone, 'Failed to schedule message. Please try again.');
+    console.error('Error scheduling message:', error.message, error.stack);
+    await sendWhatsAppMessage(senderPhone, 'לא הצלחתי לתזמן את ההודעה. נסה שוב.');
   }
+}
+
+/**
+ * Tell the sender exactly what will happen, including who is still pending —
+ * silence about a held message reads as a message that was sent.
+ */
+function buildScheduleConfirmation({ group, confirmationText, queued, awaitingConsent, declined }) {
+  if (!group && awaitingConsent.length === 0 && declined.length === 0) {
+    return confirmationText;
+  }
+
+  const lines = [];
+
+  if (group) {
+    const total = queued.length + awaitingConsent.length;
+    lines.push(`קבוצת "${group.name}": ${total} הודעות אישיות נפרדות תוזמנו.`);
+  } else if (queued.length > 0) {
+    lines.push(confirmationText);
+  }
+
+  if (awaitingConsent.length > 0) {
+    lines.push(
+      `\nממתין לאישור מ־${awaitingConsent.join(', ')} — ` +
+      `שלחתי להם בקשת הצטרפות. ההודעה תישלח רק אחרי שיאשרו.`
+    );
+  }
+
+  if (declined.length > 0) {
+    lines.push(`\nלא נשלח ל־${declined.join(', ')} — הם ביקשו לא לקבל הודעות.`);
+  }
+
+  return lines.join('\n');
 }
 
 export default router;

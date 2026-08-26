@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import pool from './src/db/pool.js';
 import messagesRouter from './src/routes/messages.js';
 import contactsRouter from './src/routes/contacts.js';
+import groupsRouter from './src/routes/groups.js';
 import metaRouter from './src/routes/meta.js';
 import billingRouter from './src/routes/billing.js';
 import externalApiRouter from './src/routes/externalApi.js';
@@ -244,6 +245,7 @@ app.get('/terms', (req, res) => {
 // API Routes (Cycle 2+)
 app.use('/api/messages', enforceQuota, messagesRouter);
 app.use('/api/contacts', contactsRouter);
+app.use('/api/groups', groupsRouter);
 app.use('/api/meta', metaRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/external', externalApiRouter);
