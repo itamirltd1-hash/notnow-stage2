@@ -4,7 +4,8 @@ import { recordDeliveryStatuses } from '../meta/deliveryStatus.js';
 import { sendWhatsAppMessage } from '../meta/sendHandler.js';
 import { parseSchedulingIntent, detectLanguage } from '../llm/intentParser.js';
 import { extractWhatsappUserContext } from '../middleware/whatsappUserContext.js';
-import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender, normalizePhoneNumber } from '../auth/userContextExtractor.js';
+import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender, normalizePhoneNumber, findContactsByName } from '../auth/userContextExtractor.js';
+import { recordInboundMessage } from '../meta/serviceWindow.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
 
 const router = express.Router();
@@ -73,6 +74,9 @@ router.post('/webhook', async (req, res) => {
       console.warn(`Invalid phone format: ${phone}`);
       return;
     }
+
+    // This inbound message opens a 24-hour window for free-form replies
+    await recordInboundMessage(phone);
 
     // Extract user context (via phone → contacts lookup)
     await extractWhatsappUserContext(req, res, () => {});
@@ -153,11 +157,31 @@ router.post('/webhook', async (req, res) => {
  */
 async function handleScheduleMessage(userId, senderPhone, entities, confirmationText) {
   try {
-    const { recipient_name, message_body, scheduled_timestamp, delivery_channel } = entities;
+    const { message_body, scheduled_timestamp, delivery_channel } = entities;
+    let { recipient_name } = entities;
     // Claude may echo the phone in local form (05...) — store it international.
-    const recipient_phone = normalizePhoneNumber(entities.recipient_phone);
+    let recipient_phone = normalizePhoneNumber(entities.recipient_phone);
 
     console.log('   Entities:', JSON.stringify(entities));
+
+    // People say "שלח למירית", not a phone number. Resolve the name against
+    // the contacts this user already has before asking them to type digits.
+    if (!recipient_phone && recipient_name) {
+      const { match, candidates } = await findContactsByName(userId, recipient_name);
+
+      if (match) {
+        recipient_phone = match.phone_number;
+        recipient_name = match.name;
+        console.log(`   Resolved "${entities.recipient_name}" → ${recipient_phone}`);
+      } else if (candidates.length > 1) {
+        const list = candidates.map(c => `• ${c.name} — ${c.phone_number}`).join('\n');
+        await sendWhatsAppMessage(
+          senderPhone,
+          `יש לי כמה אנשי קשר בשם הזה. למי מהם?\n\n${list}`
+        );
+        return;
+      }
+    }
 
     const missing = [];
     if (!recipient_phone) missing.push('מספר הנמען');
@@ -165,10 +189,26 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
     if (!scheduled_timestamp) missing.push('מועד השליחה');
 
     if (missing.length > 0) {
+      const hint = (!recipient_phone && recipient_name)
+        ? `\n\nאין לי מספר שמור עבור ${recipient_name}. שלח פעם אחת עם המספר, ואשמור אותו.`
+        : '';
       await sendWhatsAppMessage(
         senderPhone,
-        `חסר לי ${missing.join(' ו')}.\n\nדוגמה:\nשלח לדני 0508765480 מחר ב-9:00 "נתראה בפגישה"`
+        `חסר לי ${missing.join(' ו')}.${hint}\n\nדוגמה:\nשלח לדני 0508765480 מחר ב-9:00 "נתראה בפגישה"`
       );
+      return;
+    }
+
+    // A time that has already passed is almost always a parsing slip or a
+    // typo — sending immediately would surprise the user more than asking.
+    const scheduledAt = new Date(scheduled_timestamp);
+    if (Number.isNaN(scheduledAt.getTime())) {
+      await sendWhatsAppMessage(senderPhone, 'לא הצלחתי להבין את המועד. נסה למשל "מחר ב-9:00" או "עוד שעתיים".');
+      return;
+    }
+    if (scheduledAt.getTime() < Date.now() - 60_000) {
+      const when = scheduledAt.toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' });
+      await sendWhatsAppMessage(senderPhone, `המועד שביקשת (${when}) כבר עבר. מתי לשלוח?`);
       return;
     }
 

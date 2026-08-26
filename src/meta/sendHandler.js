@@ -55,15 +55,33 @@ export async function sendWhatsAppMessage(recipientPhone, messageText) {
 }
 
 /**
- * Send a template message (for future use with Meta templates).
+ * Send an approved template message.
+ *
+ * Templates are the only way to reach someone outside the 24-hour service
+ * window. `parameters` fill the template's {{1}}, {{2}}, … placeholders in
+ * order, so their count must match what Meta approved or the send is rejected.
  */
-export async function sendTemplateMessage(recipientPhone, templateName, templateLanguage = 'en') {
+export async function sendTemplateMessage(recipientPhone, templateName, templateLanguage = 'he', parameters = []) {
   const apiToken = process.env.META_API_TOKEN;
   const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
 
   if (!apiToken || !phoneNumberId) {
     throw new Error('META_API_TOKEN or META_PHONE_NUMBER_ID not configured');
   }
+
+  const template = {
+    name: templateName,
+    language: { code: templateLanguage }
+  };
+
+  if (parameters.length > 0) {
+    template.components = [{
+      type: 'body',
+      parameters: parameters.map(text => ({ type: 'text', text: String(text) }))
+    }];
+  }
+
+  console.log(`📄 Sending template "${templateName}" to ${recipientPhone} (${parameters.length} params)`);
 
   try {
     const response = await axios.post(
@@ -72,12 +90,7 @@ export async function sendTemplateMessage(recipientPhone, templateName, template
         messaging_product: 'whatsapp',
         to: recipientPhone,
         type: 'template',
-        template: {
-          name: templateName,
-          language: {
-            code: templateLanguage
-          }
-        }
+        template
       },
       {
         headers: {
@@ -88,14 +101,17 @@ export async function sendTemplateMessage(recipientPhone, templateName, template
       }
     );
 
+    const messageId = response.data.messages?.[0]?.id;
+    console.log(`✅ Template sent! ID: ${messageId}`);
     return {
       success: true,
-      messageId: response.data.messages?.[0]?.id,
+      messageId,
       timestamp: new Date().toISOString()
     };
   } catch (error) {
     const errorMsg = error.response?.data?.error?.message || error.message;
     console.error(`❌ Meta Template Error (${recipientPhone}):`, errorMsg);
+    console.error(`   Full error:`, error.response?.data);
     throw new Error(`Failed to send template message: ${errorMsg}`);
   }
 }

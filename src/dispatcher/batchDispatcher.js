@@ -1,8 +1,14 @@
 import pool from '../db/pool.js';
-import { sendWhatsAppMessage } from '../meta/sendHandler.js';
+import { sendWhatsAppMessage, sendTemplateMessage } from '../meta/sendHandler.js';
+import { isWithinServiceWindow } from '../meta/serviceWindow.js';
 
 const BATCH_SIZE = 100;
 const RETRY_DELAYS = [5000, 15000, 60000]; // 5s, 15s, 60s backoff
+
+// Must match the template approved in Meta exactly, or every send is rejected.
+// Body: "שלום {{1}}, תזכורת להודעה: {{2}} (נשלח מ-NotNow)"
+const TEMPLATE_NAME = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
+const TEMPLATE_LANGUAGE = process.env.META_TEMPLATE_LANGUAGE || 'he';
 
 /**
  * Main dispatcher: Batch process all pending messages due for delivery.
@@ -82,10 +88,22 @@ export async function dispatchPendingMessages() {
  * Returns success or throws error.
  */
 async function sendMessage(message) {
-  const { channel, recipient_phone, recipient_email, message_body, subject } = message;
+  const { channel, recipient_phone, recipient_name, message_body } = message;
 
   if (channel === 'whatsapp') {
-    return await sendWhatsAppMessage(recipient_phone, message_body);
+    // Free-form text reaches only people who wrote to us in the last 24 hours.
+    // Everyone else must be reached through the approved template.
+    if (await isWithinServiceWindow(recipient_phone)) {
+      return await sendWhatsAppMessage(recipient_phone, message_body);
+    }
+
+    console.log(`   ${recipient_phone} is outside the 24h window — using template`);
+    return await sendTemplateMessage(
+      recipient_phone,
+      TEMPLATE_NAME,
+      TEMPLATE_LANGUAGE,
+      [recipient_name || 'שלום', message_body]
+    );
   } else if (channel === 'email') {
     // TODO: Implement email sending via Resend
     throw new Error('Email channel not yet implemented');

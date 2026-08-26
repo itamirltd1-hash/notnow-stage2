@@ -106,6 +106,48 @@ export async function getContactNameByPhone(userId, phoneNumber) {
 }
 
 /**
+ * Strip the Hebrew dative prefix the parser often keeps on a name:
+ * "למירית" → "מירית". Only removed when a plausible name remains.
+ */
+function stripHebrewPrefix(name) {
+  const cleaned = name.trim().replace(/^ל[־-]?/, '');
+  return cleaned.length >= 2 ? cleaned : name.trim();
+}
+
+/**
+ * Resolve a spoken name ("מירית") to one of the user's saved contacts.
+ * Returns { match } for exactly one hit, { candidates } when ambiguous,
+ * or { candidates: [] } when nothing matched — the caller decides what to ask.
+ */
+export async function findContactsByName(userId, name) {
+  if (!name) return { candidates: [] };
+
+  const bare = stripHebrewPrefix(name);
+
+  try {
+    // Exact name first, then a prefix match, so "דני" doesn't lose to "דניאל".
+    for (const pattern of [bare, `${bare}%`, `%${bare}%`]) {
+      const result = await pool.query(
+        `SELECT contact_id, name, phone_number
+           FROM contacts
+          WHERE user_id = $1 AND name ILIKE $2
+          ORDER BY name
+          LIMIT 5`,
+        [userId, pattern]
+      );
+
+      if (result.rows.length === 1) return { match: result.rows[0], candidates: result.rows };
+      if (result.rows.length > 1) return { candidates: result.rows };
+    }
+
+    return { candidates: [] };
+  } catch (error) {
+    console.error('Error looking up contact by name:', error.message);
+    return { candidates: [] };
+  }
+}
+
+/**
  * Register or update a contact for a user based on incoming message.
  * If the phone is unknown, optionally auto-create a contact entry.
  */

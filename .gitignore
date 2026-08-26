@@ -26,3 +26,6 @@ logs/
 # Temp
 tmp/
 temp/
+
+# Credential notes (never commit)
+*credentials*

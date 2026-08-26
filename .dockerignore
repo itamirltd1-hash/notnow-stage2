@@ -1,0 +1,27 @@
+# Secrets — must never reach the image. The container reads configuration
+# from the platform's environment variables, never from a bundled file.
+.env
+.env.*
+!.env.example
+*credentials*
+*secret*
+*.pem
+*.key
+
+# Version control
+.git
+.gitignore
+
+# Dependencies (reinstalled during build)
+node_modules
+
+# Local noise
+npm-debug.log
+*.log
+logs/
+tmp/
+temp/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
