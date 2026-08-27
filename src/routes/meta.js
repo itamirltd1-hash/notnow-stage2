@@ -13,6 +13,7 @@ import {
   isPendingRecipient, SYNTAX_HELP
 } from '../groups/groupCommands.js';
 import { isGreeting, isHelpRequest, welcomeMessage, helpMessage, consentClarification } from '../meta/welcome.js';
+import { parseQueueCommand, runQueueCommand } from '../queue/queueCommands.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
 import { downloadMedia } from '../meta/mediaDownload.js';
 import { transcribeAudio, isTranscriptionAvailable } from '../llm/transcriber.js';
@@ -129,6 +130,16 @@ router.post('/webhook', async (req, res) => {
       return;
     }
 
+    // Seeing and cancelling the queue: also patterns, for the same reason as
+    // group management — cancelling the wrong message is not recoverable.
+    if (type === 'text') {
+      const queueCommand = parseQueueCommand(text);
+      if (queueCommand) {
+        await sendWhatsAppMessage(phone, await runQueueCommand(req.userId, queueCommand));
+        return;
+      }
+    }
+
     // Group management is matched by pattern, not parsed by the model.
     if (type === 'text') {
       const command = parseGroupCommand(text);
@@ -213,14 +224,14 @@ router.post('/webhook', async (req, res) => {
         await handleScheduleMessage(req.userId, phone, entities, confirmationText);
         break;
 
+      // Phrased loosely enough that the patterns missed it — show the queue
+      // and let the sender pick a number rather than guessing which to cancel.
       case 'CANCEL_SCHEDULED':
-        // TODO: Cycle 3+ feature
-        await sendWhatsAppMessage(phone, 'Cancel feature coming soon!');
+        await sendWhatsAppMessage(phone, await runQueueCommand(req.userId, { action: 'cancel', target: null }));
         break;
 
       case 'LIST_QUEUE':
-        // TODO: Cycle 3+ feature
-        await sendWhatsAppMessage(phone, 'Queue listing feature coming soon!');
+        await sendWhatsAppMessage(phone, await runQueueCommand(req.userId, { action: 'list' }));
         break;
 
       case 'UPGRADE_TIER':
