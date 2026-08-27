@@ -73,6 +73,11 @@ function validateEnvironment() {
     .forEach(k => console.log(`   ${shape(k)}`));
   console.log(`   META_PHONE_NUMBER_ID=${process.env.META_PHONE_NUMBER_ID || 'MISSING'}`);
 
+  if (process.env.ALLOW_TEST_AUTH === 'true') {
+    console.warn('🚨 ALLOW_TEST_AUTH is on — the X-User-ID header can impersonate');
+    console.warn('   any account. Turn this off before real users exist.');
+  }
+
   console.log('✅ Environment validation passed');
 }
 

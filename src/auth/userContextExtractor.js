@@ -2,18 +2,21 @@ import { getUserContacts } from '../db/multitenancyHelpers.js';
 import pool from '../db/pool.js';
 
 /**
- * Extract user context from a phone number.
- * Returns user_id if the phone is registered to a user, or null if unknown.
+ * Identify the tenant a phone number belongs to.
+ *
+ * Only a user's own contact row (is_owner) may identify them. Matching any
+ * contact would authenticate every recipient as the tenant who saved them,
+ * letting them schedule from that tenant's quota to that tenant's contacts.
  */
 export async function getUserByPhone(phoneNumber) {
   try {
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
 
     const result = await pool.query(
-      `SELECT DISTINCT u.user_id, u.email, u.tier
+      `SELECT u.user_id, u.email, u.tier
        FROM users u
        JOIN contacts c ON u.user_id = c.user_id
-       WHERE c.phone_number = $1
+       WHERE c.phone_number = $1 AND c.is_owner = TRUE
        LIMIT 1`,
       [normalizedPhone]
     );
@@ -51,10 +54,11 @@ export async function autoRegisterSender(phoneNumber) {
     [user.user_id]
   );
 
+  // This one row is what proves the number is the tenant, not a recipient.
   await pool.query(
-    `INSERT INTO contacts (user_id, name, phone_number)
-     VALUES ($1, 'Me', $2)
-     ON CONFLICT (user_id, phone_number) DO NOTHING`,
+    `INSERT INTO contacts (user_id, name, phone_number, is_owner)
+     VALUES ($1, 'Me', $2, TRUE)
+     ON CONFLICT (user_id, phone_number) DO UPDATE SET is_owner = TRUE`,
     [user.user_id, normalizedPhone]
   );
 

@@ -18,9 +18,12 @@ export function requireUser(req, res, next) {
     return next();
   }
 
-  // Try X-User-ID header for testing (REMOVE IN PRODUCTION)
+  // X-User-ID impersonates any account, so it is off unless switched on
+  // deliberately. It used to key off NODE_ENV, which is unset on most hosts —
+  // meaning the header was live in production and anyone could pass any id.
   const testUserId = req.headers['x-user-id'];
-  if (testUserId && process.env.NODE_ENV === 'development') {
+  if (testUserId && process.env.ALLOW_TEST_AUTH === 'true') {
+    console.warn(`⚠️  Test auth used: acting as user ${testUserId}`);
     req.userId = parseInt(testUserId, 10);
     return next();
   }
