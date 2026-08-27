@@ -10,48 +10,90 @@ import pool from '../db/pool.js';
 // Scheduling is fuzzy and benefits from a model; management is precise and
 // destructive — "מחק מטסטרים דנה" must never remove a different person because
 // a parse came back at 0.6 confidence.
-const PATTERNS = [
-  {
-    action: 'create',
-    re: /^\s*(?:צור|תצור|תיצור|פתח|תפתח|הוסף)\s+קבוצ(?:ה|ת)\s+(.+?)\s*$/
-  },
-  {
-    action: 'add',
-    re: /^\s*(?:הוסף|תוסיף|צרף|תצרף)\s+ל(?:קבוצת\s+)?(\S+)\s+([+\d][\d\-\s()]{6,})\s*(.*?)\s*$/
-  },
-  {
-    action: 'members',
-    re: /^\s*(?:מי\s+ב|תראה\s+את\s+)(?:קבוצת\s+)?(.+?)\s*[?？]?\s*$/
-  },
-  {
-    action: 'remove',
-    re: /^\s*(?:מחק|תמחק|הסר|תסיר|הוצא)\s+מ(?:קבוצת\s+)?(\S+)\s+(.+?)\s*$/
-  }
-];
+const CREATE = /^\s*(?:צור|תצור|תיצור|פתח|תפתח)\s+קבוצ(?:ה|ת)\s+(.+?)\s*$/;
+const MEMBERS = /^\s*(?:מי\s+ב|תראה\s+את\s+)(?:קבוצת\s+)?(.+?)\s*[?？]?\s*$/;
+const REMOVE = /^\s*(?:מחק|תמחק|הסר|תסיר|הוצא)\s+מ(?:קבוצת\s+)?(\S+)\s+(?:את\s+)?(.+?)\s*$/;
 
-// Tells "meant a group command but got the wording wrong" apart from "meant
-// something else". Anchored on a management verb at the start: merely
-// mentioning a group is what a scheduling request does too
-// ("תשלח לקבוצת צוות מחר"), and that must reach the scheduler untouched.
-const LOOKS_LIKE_GROUP_COMMAND =
-  /^\s*(?:צור|תצור|תיצור|פתח|תפתח|הוסף|תוסיף|צרף|תצרף|מחק|תמחק|הסר|תסיר|הוצא)\b/;
+// "הוסף [לקבוצת X] [את] <the rest>" — the rest holds a phone and a name in
+// whichever order the person happened to say them, which is why it is pulled
+// apart afterwards rather than by more alternatives here.
+const ADD = /^\s*(?:הוסף|תוסיף|צרף|תצרף)\s+(?:ל(?:קבוצת\s+)?(\S+)\s+)?(?:את\s+)?(.+?)\s*$/;
+const PHONE_IN_TEXT = /([+\d][\d\-\s()]{6,}\d)/;
+
+// \b is ASCII-only in JavaScript, so it never matches after a Hebrew letter —
+// this must use a lookahead for whitespace or end of line instead.
+const MANAGEMENT_VERB =
+  /^\s*(?:צור|תצור|תיצור|פתח|תפתח|הוסף|תוסיף|צרף|תצרף|מחק|תמחק|הסר|תסיר|הוצא)(?=\s|$)/;
 
 /**
- * Recognise a group management command. Returns null when the message is
- * something else, so it falls through to the scheduler.
+ * Split "הוסף" arguments into a phone and a name, in either order.
  */
-export function parseGroupCommand(text) {
-  for (const { action, re } of PATTERNS) {
-    const match = text.match(re);
-    if (match) {
-      return { action, args: match.slice(1) };
-    }
+function splitContact(rest) {
+  const phoneMatch = rest.match(PHONE_IN_TEXT);
+  if (!phoneMatch) return null;
+
+  const phone = phoneMatch[1].trim();
+  const name = rest.replace(phoneMatch[1], ' ').replace(/\s+/g, ' ').trim();
+  return { phone, name };
+}
+
+function parseLine(line) {
+  const create = line.match(CREATE);
+  if (create) return { action: 'create', args: [create[1]] };
+
+  const remove = line.match(REMOVE);
+  if (remove) return { action: 'remove', args: [remove[1], remove[2]] };
+
+  const add = line.match(ADD);
+  if (add) {
+    const contact = splitContact(add[2]);
+    if (contact) return { action: 'add', args: [add[1] || null, contact.phone, contact.name] };
   }
+
+  const members = line.match(MEMBERS);
+  if (members) return { action: 'members', args: [members[1]] };
+
   return null;
 }
 
+/**
+ * Recognise group management, one command per line.
+ *
+ * People add several people in one message and name the group only on the
+ * first line ("הוסף לקבוצת בדיקה את חגי 05… / הוסף את מירית 05…"), so a line
+ * without a group inherits the one above it.
+ */
+export function parseGroupCommand(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const commands = [];
+  let lastGroup = null;
+
+  for (const line of lines) {
+    const parsed = parseLine(line);
+    if (!parsed) {
+      // One unrecognised line among several is still a failed batch: acting on
+      // part of it would silently drop people the sender believes were added.
+      return lines.length > 1 && commands.length > 0 ? { action: 'batch', commands, incomplete: line } : null;
+    }
+
+    if (parsed.action === 'add') {
+      parsed.args[0] = parsed.args[0] || lastGroup;
+      if (!parsed.args[0]) return null;
+      lastGroup = parsed.args[0];
+    } else if (parsed.action === 'create' || parsed.action === 'remove') {
+      lastGroup = parsed.args[0];
+    }
+
+    commands.push(parsed);
+  }
+
+  if (commands.length === 0) return null;
+  if (commands.length === 1) return commands[0];
+  return { action: 'batch', commands };
+}
+
 export function looksLikeGroupCommand(text) {
-  return LOOKS_LIKE_GROUP_COMMAND.test(text);
+  return text.split('\n').some(line => MANAGEMENT_VERB.test(line));
 }
 
 export const SYNTAX_HELP =
@@ -68,6 +110,25 @@ export const SYNTAX_HELP =
  * whether the right person was removed.
  */
 export async function runGroupCommand(userId, command) {
+  // Several commands in one message: report every line, so a member that
+  // failed to add is visible instead of assumed.
+  if (command.action === 'batch') {
+    const lines = [];
+    for (const single of command.commands) {
+      const result = await runGroupCommand(userId, single);
+      if (typeof result === 'object' && result?.reply) {
+        // A line needing a follow-up question cannot be answered mid-batch.
+        lines.push(result.reply.split('\n')[0]);
+      } else if (result) {
+        lines.push(result.split('\n')[0]);
+      }
+    }
+    if (command.incomplete) {
+      lines.push(`\nלא הבנתי את השורה: "${command.incomplete}"\n\n${SYNTAX_HELP}`);
+    }
+    return lines.join('\n');
+  }
+
   const [a, b, c] = command.args;
 
   switch (command.action) {
