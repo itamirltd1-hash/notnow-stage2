@@ -11,6 +11,7 @@ import metaRouter from './src/routes/meta.js';
 import billingRouter from './src/routes/billing.js';
 import externalApiRouter from './src/routes/externalApi.js';
 import { enforceQuota } from './src/billing/quotaMiddleware.js';
+import { exemptCount, listExempt } from './src/billing/exemptions.js';
 import { dispatchPendingMessages, getDispatcherMetrics } from './src/dispatcher/batchDispatcher.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -72,6 +73,7 @@ function validateEnvironment() {
   ['META_APP_SECRET', 'META_API_TOKEN', 'WEBHOOK_VERIFY_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY']
     .forEach(k => console.log(`   ${shape(k)}`));
   console.log(`   META_PHONE_NUMBER_ID=${process.env.META_PHONE_NUMBER_ID || 'MISSING'}`);
+  console.log(`   EXEMPT_PHONES=${exemptCount()} number(s): ${listExempt().join(', ') || '(none)'}`);
 
   if (process.env.ALLOW_TEST_AUTH === 'true') {
     console.warn('🚨 ALLOW_TEST_AUTH is on — the X-User-ID header can impersonate');

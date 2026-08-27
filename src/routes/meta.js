@@ -16,6 +16,7 @@ import {
 import { isGreeting, isHelpRequest, welcomeMessage, helpMessage, consentClarification } from '../meta/welcome.js';
 import { parseQueueCommand, runQueueCommand } from '../queue/queueCommands.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
+import { isExempt } from '../billing/exemptions.js';
 import { downloadMedia } from '../meta/mediaDownload.js';
 import { transcribeAudio, isTranscriptionAvailable } from '../llm/transcriber.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
@@ -506,15 +507,21 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
       return;
     }
 
-    // Each recipient costs one message, so a group of ten costs ten.
-    const quota = await checkUserQuota(userId);
-    if (!quota.allowed || quota.remaining < recipients.length) {
-      await sendWhatsAppMessage(
-        senderPhone,
-        `המכסה החודשית לא מספיקה: נדרשות ${recipients.length} הודעות ונשארו ${quota.remaining ?? 0} ` +
-        `מתוך ${quota.limit ?? '?'} (${quota.tier ?? 'FREE'}).`
-      );
-      return;
+    // Each recipient costs one message, so a group of ten costs ten — except
+    // for exempt numbers, which are free in both directions.
+    const senderExempt = isExempt(senderPhone);
+    const billable = recipients.filter(r => !isExempt(r.phone));
+
+    if (!senderExempt && billable.length > 0) {
+      const quota = await checkUserQuota(userId);
+      if (!quota.allowed || quota.remaining < billable.length) {
+        await sendWhatsAppMessage(
+          senderPhone,
+          `המכסה החודשית לא מספיקה: נדרשות ${billable.length} הודעות ונשארו ${quota.remaining ?? 0} ` +
+          `מתוך ${quota.limit ?? '?'} (${quota.tier ?? 'FREE'}).`
+        );
+        return;
+      }
     }
 
     const queued = [];
@@ -559,9 +566,14 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
       console.log(`   queue_id=${result.rows[0].queue_id} → ${recipient.phone} (${status})`);
     }
 
-    const scheduledCount = queued.length + awaitingConsent.length;
-    if (scheduledCount > 0) {
-      await incrementMonthlyUsage(userId, scheduledCount);
+    // Bill only what was actually scheduled, and only what is billable.
+    const scheduled = new Set([...queued, ...awaitingConsent]);
+    const billed = senderExempt
+      ? 0
+      : billable.filter(r => scheduled.has(r.name || r.phone)).length;
+
+    if (billed > 0) {
+      await incrementMonthlyUsage(userId, billed);
     }
 
     await sendWhatsAppMessage(
