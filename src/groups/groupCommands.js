@@ -3,6 +3,7 @@ import {
   getGroupMembers, findGroupsByName, listGroups
 } from './groupService.js';
 import { normalizePhoneNumber } from '../auth/userContextExtractor.js';
+import { formatOptions } from '../meta/pendingChoice.js';
 import pool from '../db/pool.js';
 
 // Management commands are matched by pattern rather than sent to the model.
@@ -116,9 +117,23 @@ export async function runGroupCommand(userId, command) {
       );
 
       if (target.length === 0) return `לא מצאתי את "${b}" ב"${match.name}".`;
+
       if (target.length > 1) {
-        return `יש כמה בשם "${b}" ב"${match.name}". ציין מספר טלפון:\n` +
-          target.map(m => `• ${m.name} ${m.phone_number}`).join('\n');
+        return {
+          reply: `יש כמה בשם "${b}" ב"${match.name}". את מי להסיר?\n` +
+            formatOptions(target, m => `${m.name} ${m.phone_number}`) +
+            `\n\nהשב באות.`,
+          choice: {
+            kind: 'remove_member',
+            payload: {
+              groupId: match.group_id,
+              groupName: match.name,
+              options: target.map(m => ({
+                contact_id: m.contact_id, name: m.name, phone: m.phone_number
+              }))
+            }
+          }
+        };
       }
 
       await removeGroupMember(userId, match.group_id, target[0].contact_id);

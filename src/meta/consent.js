@@ -6,8 +6,16 @@ import { isWithinServiceWindow } from './serviceWindow.js';
 const TEMPLATE_NAME = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
 const TEMPLATE_LANGUAGE = process.env.META_TEMPLATE_LANGUAGE || 'he';
 
-const AGREE = /^\s*(כן|מאשר|מאשרת|אישור|אוקיי|אוקי|בסדר|yes|y|ok|ok!|start)\s*[!.]?\s*$/i;
+// The words always count: "הסר" and "stop" are the opt-out keywords people
+// already expect, and dropping them would break a convention Meta relies on.
+const AGREE = /^\s*(כן|מאשר|מאשרת|אישור|אוקיי|אוקי|בסדר|yes|y|ok|start)\s*[!.]?\s*$/i;
 const REFUSE = /^\s*(לא|הסר|הסירו|תסיר|בטל|הפסק|די|stop|unsubscribe|no)\s*[!.]?\s*$/i;
+
+// A bare letter only answers a consent question that is actually open. A
+// tenant whose own contact row is already 'granted' answers letters to the
+// bot's other questions all the time — those must not land here.
+const LETTER_YES = /^\s*(א|a)\s*[!.]?\s*$/i;
+const LETTER_NO = /^\s*(ב|b)\s*[!.]?\s*$/i;
 
 /**
  * Does this recipient have an answer on file, one way or the other?
@@ -33,7 +41,7 @@ export async function requestConsent(userId, phone, senderName = 'משתמש') {
 
   const ask =
     `${senderName} מבקש לתזמן עבורך הודעות דרך NotNow. ` +
-    `להסכים? השב "כן". לסירוב השב "הסר" ולא נפנה אליך שוב.`;
+    `השב א לאישור, או ב לסירוב — ואז לא נפנה אליך שוב.`;
 
   try {
     // A recipient who wrote to us recently can be asked in plain text.
@@ -70,8 +78,16 @@ export async function requestConsent(userId, phone, senderName = 'משתמש') {
  */
 export async function handleConsentReply(phone, text) {
   const normalized = normalizePhoneNumber(phone);
-  const agreed = AGREE.test(text);
-  const refused = REFUSE.test(text);
+
+  // Is a consent question actually open for this number right now?
+  const asked = await pool.query(
+    `SELECT 1 FROM contacts WHERE phone_number = $1 AND consent_status = 'requested' LIMIT 1`,
+    [normalized]
+  );
+  const questionIsOpen = asked.rowCount > 0;
+
+  const agreed = AGREE.test(text) || (questionIsOpen && LETTER_YES.test(text));
+  const refused = REFUSE.test(text) || (questionIsOpen && LETTER_NO.test(text));
 
   if (!agreed && !refused) {
     // "הסר" always wins, even from someone who never got an explicit ask.

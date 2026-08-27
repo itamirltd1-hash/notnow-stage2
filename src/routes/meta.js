@@ -7,7 +7,8 @@ import { extractWhatsappUserContext } from '../middleware/whatsappUserContext.js
 import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender, normalizePhoneNumber, findContactsByName } from '../auth/userContextExtractor.js';
 import { recordInboundMessage } from '../meta/serviceWindow.js';
 import { getConsentStatus, requestConsent, handleConsentReply } from '../meta/consent.js';
-import { findGroupsByName, getGroupMembers, listGroups } from '../groups/groupService.js';
+import { findGroupsByName, getGroupMembers, listGroups, removeGroupMember } from '../groups/groupService.js';
+import { storeChoice, resolveChoice, formatOptions } from '../meta/pendingChoice.js';
 import {
   parseGroupCommand, runGroupCommand, looksLikeGroupCommand,
   isPendingRecipient, SYNTAX_HELP
@@ -17,7 +18,6 @@ import { parseQueueCommand, runQueueCommand } from '../queue/queueCommands.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
 import { downloadMedia } from '../meta/mediaDownload.js';
 import { transcribeAudio, isTranscriptionAvailable } from '../llm/transcriber.js';
-import { storePendingVoice, resolvePendingVoice } from '../meta/voiceFlow.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
 
 const router = express.Router();
@@ -90,6 +90,17 @@ router.post('/webhook', async (req, res) => {
     // This inbound message opens a 24-hour window for free-form replies
     await recordInboundMessage(phone);
 
+    // A question the bot asked a moment ago outranks any older state: the
+    // letter was offered for that question, so resolve it first. The stored
+    // row carries its own user_id, which is why this can run before identity.
+    if (type === 'text') {
+      const choice = await resolveChoice(phone, text);
+      if (choice) {
+        await handleChoice(choice.userId, phone, choice);
+        return;
+      }
+    }
+
     // A recipient answering "כן" or "הסר" is not issuing a command — resolve
     // consent before anything can mistake them for a tenant and register them.
     if (type === 'text' && await handleConsentReply(phone, text)) {
@@ -144,9 +155,15 @@ router.post('/webhook', async (req, res) => {
     if (type === 'text') {
       const command = parseGroupCommand(text);
       if (command) {
-        const reply = await runGroupCommand(req.userId, command);
-        if (reply) {
-          await sendWhatsAppMessage(phone, reply);
+        const result = await runGroupCommand(req.userId, command);
+        if (result) {
+          // An ambiguous removal comes back as options rather than text.
+          if (typeof result === 'object') {
+            await storeChoice(req.userId, phone, result.choice.kind, result.choice.payload);
+            await sendWhatsAppMessage(phone, result.reply);
+          } else {
+            await sendWhatsAppMessage(phone, result);
+          }
           return;
         }
         // 'members' returns null when the phrase was not about a group at all,
@@ -165,16 +182,8 @@ router.post('/webhook', async (req, res) => {
       if (!text) return; // the sender already got an explanation
     }
 
-    // "טקסט" or "קול" answers the question a voice note just asked.
-    const voiceChoice = await resolvePendingVoice(phone, text);
-    if (voiceChoice) {
-      console.log(`🎙️  Sender chose to deliver the ${voiceChoice.choice}`);
-      await handleScheduleMessage(
-        req.userId, phone, voiceChoice.entities,
-        voiceChoice.confirmationText, voiceChoice.mediaId
-      );
-      return;
-    }
+    // The voice delivery question is answered by a letter now, through the
+    // same pending_choice path as every other question, above.
 
     // A bare "קבוצות" is a lookup, not a scheduling request — answering it
     // directly avoids spending a model call on it.
@@ -249,6 +258,58 @@ router.post('/webhook', async (req, res) => {
 });
 
 /**
+ * Act on a one-letter answer to whatever the bot last asked.
+ * The original request was parked whole, so answering resumes it exactly
+ * where it stopped rather than starting over.
+ */
+async function handleChoice(userId, senderPhone, choice) {
+  if (choice.kind === 'out_of_range') {
+    await sendWhatsAppMessage(
+      senderPhone,
+      `יש ${choice.optionCount} אפשרויות. השב באות שמופיעה ברשימה.`
+    );
+    return;
+  }
+
+  const { payload, option } = choice;
+
+  switch (choice.kind) {
+    case 'schedule_recipient': {
+      const entities = { ...payload.entities, recipient_phone: option.phone, recipient_name: option.name, recipient_group: null };
+      await handleScheduleMessage(userId, senderPhone, entities, payload.confirmationText, payload.mediaId);
+      return;
+    }
+
+    case 'schedule_group': {
+      const entities = { ...payload.entities, recipient_group: option.name, recipient_name: null, recipient_phone: null };
+      await handleScheduleMessage(userId, senderPhone, entities, payload.confirmationText, payload.mediaId);
+      return;
+    }
+
+    case 'remove_member': {
+      const removed = await removeGroupMember(userId, payload.groupId, option.contact_id);
+      await sendWhatsAppMessage(
+        senderPhone,
+        removed
+          ? `${option.name} (${option.phone}) הוסר מ"${payload.groupName}".`
+          : `לא הצלחתי להסיר את ${option.name}.`
+      );
+      return;
+    }
+
+    case 'voice_delivery': {
+      const mediaId = option.mode === 'audio' ? payload.mediaId : null;
+      console.log(`🎙️  Sender chose to deliver the ${option.mode}`);
+      await handleScheduleMessage(userId, senderPhone, payload.entities, payload.confirmationText, mediaId);
+      return;
+    }
+
+    default:
+      await sendWhatsAppMessage(senderPhone, 'לא הצלחתי להשלים את הבחירה. נסה לשלוח את הבקשה שוב.');
+  }
+}
+
+/**
  * Turn an incoming voice note into an actionable request.
  *
  * The recording usually carries the whole command, so it is transcribed and
@@ -291,18 +352,24 @@ async function handleVoiceNote(userId, phone, mediaId) {
     return transcript;
   }
 
-  await storePendingVoice(
-    userId, phone, mediaId, transcript,
-    intentResult.entities, intentResult.confirmationText
-  );
+  await storeChoice(userId, phone, 'voice_delivery', {
+    options: [
+      { mode: 'text', label: 'טקסט' },
+      { mode: 'audio', label: 'הקלטה' }
+    ],
+    entities: intentResult.entities,
+    confirmationText: intentResult.confirmationText,
+    mediaId,
+    transcript
+  });
 
   await sendWhatsAppMessage(
     phone,
     `תמללתי: "${transcript}"\n\n` +
     `מה לשלוח לנמען?\n` +
-    `• "טקסט" — את המילים כהודעת טקסט\n` +
-    `• "קול" — את ההקלטה המקורית\n\n` +
-    `שים לב: הקלטה מגיעה רק למי שכתב לבוט ב-24 השעות האחרונות. ` +
+    `א. את המילים כהודעת טקסט\n` +
+    `ב. את ההקלטה המקורית\n\n` +
+    `השב באות. שים לב: הקלטה מגיעה רק למי שכתב לבוט ב-24 השעות האחרונות — ` +
     `אחרת תישלח גרסת הטקסט.`
   );
 
@@ -322,8 +389,15 @@ async function resolveRecipients(userId, entities) {
     const { match, candidates } = await findGroupsByName(userId, groupName);
 
     if (candidates.length > 1) {
-      const list = candidates.map(g => `• ${g.name}`).join('\n');
-      return { reply: `יש לי כמה קבוצות בשם הזה. לאיזו?\n\n${list}` };
+      return {
+        reply: `יש לי כמה קבוצות בשם הזה. לאיזו?\n\n` +
+          formatOptions(candidates, g => g.name) +
+          `\n\nהשב באות.`,
+        choice: {
+          kind: 'schedule_group',
+          options: candidates.map(g => ({ name: g.name, group_id: g.group_id }))
+        }
+      };
     }
     if (!match) {
       return { reply: `אין לי קבוצה בשם "${groupName}". שלח "קבוצות" כדי לראות מה שמור אצלי.` };
@@ -354,8 +428,15 @@ async function resolveRecipients(userId, entities) {
       recipientName = match.name;
       console.log(`   Resolved "${entities.recipient_name}" → ${recipientPhone}`);
     } else if (candidates.length > 1) {
-      const list = candidates.map(c => `• ${c.name} — ${c.phone_number}`).join('\n');
-      return { reply: `יש לי כמה אנשי קשר בשם הזה. למי מהם?\n\n${list}` };
+      return {
+        reply: `יש לי כמה אנשי קשר בשם הזה. למי מהם?\n\n` +
+          formatOptions(candidates, c => `${c.name} — ${c.phone_number}`) +
+          `\n\nהשב באות.`,
+        choice: {
+          kind: 'schedule_recipient',
+          options: candidates.map(c => ({ name: c.name, phone: c.phone_number }))
+        }
+      };
     }
   }
 
@@ -380,6 +461,16 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
 
     const resolved = await resolveRecipients(userId, entities);
     if (resolved.reply) {
+      // An ambiguous request stays answerable: park the options so a single
+      // letter can finish it, instead of making the sender retype everything.
+      if (resolved.choice) {
+        await storeChoice(userId, senderPhone, resolved.choice.kind, {
+          options: resolved.choice.options,
+          entities,
+          confirmationText,
+          mediaId
+        });
+      }
       await sendWhatsAppMessage(senderPhone, resolved.reply);
       return;
     }
