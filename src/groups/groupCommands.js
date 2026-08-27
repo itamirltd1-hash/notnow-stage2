@@ -11,7 +11,12 @@ import pool from '../db/pool.js';
 // destructive — "מחק מטסטרים דנה" must never remove a different person because
 // a parse came back at 0.6 confidence.
 const CREATE = /^\s*(?:צור|תצור|תיצור|פתח|תפתח)\s+קבוצ(?:ה|ת)\s+(.+?)\s*$/;
-const MEMBERS = /^\s*(?:מי\s+ב|תראה\s+את\s+)(?:קבוצת\s+)?(.+?)\s*[?？]?\s*$/;
+// Read-only, so a loose match costs nothing: at worst it names a group that
+// does not exist and falls through. Destructive commands stay strict.
+// "מי בטסטרים" and "תוכל להראות לי מי מקבוצת בדיקה?" are the same question.
+const MEMBERS_PHRASED =
+  /(?:מי|תראה|תראי|הראה|הצג|תציג|רשימת|רשימה)\s.*?קבוצ(?:ת|ה)\s+(.+?)\s*[?？.]?\s*$/;
+const MEMBERS_SHORT = /^\s*מי\s+ב(.+?)\s*[?？.]?\s*$/;
 const REMOVE = /^\s*(?:מחק|תמחק|הסר|תסיר|הוצא)\s+מ(?:קבוצת\s+)?(\S+)\s+(?:את\s+)?(.+?)\s*$/;
 
 // "הוסף [לקבוצת X] [את] <the rest>" — the rest holds a phone and a name in
@@ -50,7 +55,7 @@ function parseLine(line) {
     if (contact) return { action: 'add', args: [add[1] || null, contact.phone, contact.name] };
   }
 
-  const members = line.match(MEMBERS);
+  const members = line.match(MEMBERS_SHORT) || line.match(MEMBERS_PHRASED);
   if (members) return { action: 'members', args: [members[1]] };
 
   return null;
