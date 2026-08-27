@@ -8,6 +8,11 @@ import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender, nor
 import { recordInboundMessage } from '../meta/serviceWindow.js';
 import { getConsentStatus, requestConsent, handleConsentReply } from '../meta/consent.js';
 import { findGroupsByName, getGroupMembers, listGroups } from '../groups/groupService.js';
+import {
+  parseGroupCommand, runGroupCommand, looksLikeGroupCommand,
+  isPendingRecipient, SYNTAX_HELP
+} from '../groups/groupCommands.js';
+import { isGreeting, isHelpRequest, welcomeMessage, helpMessage, consentClarification } from '../meta/welcome.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
 import { downloadMedia } from '../meta/mediaDownload.js';
 import { transcribeAudio, isTranscriptionAvailable } from '../llm/transcriber.js';
@@ -93,15 +98,54 @@ router.post('/webhook', async (req, res) => {
     // Extract user context (via phone → contacts lookup)
     await extractWhatsappUserContext(req, res, () => {});
 
+    // Someone who was asked for permission and answered with something other
+    // than yes/no is still in that conversation. Re-ask; don't onboard them.
+    if (!req.userId && type === 'text' && await isPendingRecipient(phone)) {
+      await sendWhatsAppMessage(phone, consentClarification());
+      return;
+    }
+
+    let isNewUser = false;
     if (!req.userId) {
       console.log(`🆕 Auto-registering new sender ${phone}`);
       const newUser = await autoRegisterSender(phone);
       if (!newUser) {
-        await sendWhatsAppMessage(phone, 'Sorry, could not register your number. Please try again later.');
+        await sendWhatsAppMessage(phone, 'לא הצלחתי לרשום את המספר שלך. נסה שוב בעוד רגע.');
         return;
       }
       req.userId = newUser.user_id;
+      isNewUser = true;
       console.log(`✅ Registered user ${newUser.user_id} for ${phone}`);
+    }
+
+    // A first message, a greeting or a request for help are all answered from
+    // static text — no model call, no "לא הבנתי" as an opening impression.
+    if (type === 'text' && (isNewUser || isGreeting(text))) {
+      await sendWhatsAppMessage(phone, isNewUser ? welcomeMessage() : helpMessage());
+      return;
+    }
+    if (type === 'text' && isHelpRequest(text)) {
+      await sendWhatsAppMessage(phone, helpMessage());
+      return;
+    }
+
+    // Group management is matched by pattern, not parsed by the model.
+    if (type === 'text') {
+      const command = parseGroupCommand(text);
+      if (command) {
+        const reply = await runGroupCommand(req.userId, command);
+        if (reply) {
+          await sendWhatsAppMessage(phone, reply);
+          return;
+        }
+        // 'members' returns null when the phrase was not about a group at all,
+        // so it falls through to the scheduler rather than dead-ending.
+      } else if (looksLikeGroupCommand(text)) {
+        // Opens with a management verb but matches no command — a wording slip.
+        // Showing the syntax beats sending it to the scheduler to fail there.
+        await sendWhatsAppMessage(phone, `לא זיהיתי את הפקודה.\n\n${SYNTAX_HELP}`);
+        return;
+      }
     }
 
     // A voice note has to become text before anything can be parsed from it.
