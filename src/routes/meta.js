@@ -122,7 +122,7 @@ router.post('/webhook', async (req, res) => {
       console.log(`🆕 Auto-registering new sender ${phone}`);
       const newUser = await autoRegisterSender(phone);
       if (!newUser) {
-        await sendWhatsAppMessage(phone, 'לא הצלחתי לרשום את המספר שלך. נסה שוב בעוד רגע.');
+        await sendWhatsAppMessage(phone, 'לא הצלחתי לרשום את המספר שלך. אפשר לנסות שוב בעוד רגע.');
         return;
       }
       req.userId = newUser.user_id;
@@ -215,7 +215,7 @@ router.post('/webhook', async (req, res) => {
       // Claude usually phrases the clarification better, and in the user's
       // own language — prefer it over our generic fallback.
       const errorMsg = intentResult.error
-        || 'לא הבנתי. נסה למשל: שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"';
+        || 'לא הבנתי. אפשר למשל: שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"';
       console.log(
         `⚠️  Not acting (success=${intentResult.success}, ` +
         `confidence=${intentResult.confidence}), replying:`, errorMsg
@@ -266,7 +266,7 @@ async function handleChoice(userId, senderPhone, choice) {
   if (choice.kind === 'out_of_range') {
     await sendWhatsAppMessage(
       senderPhone,
-      `יש ${choice.optionCount} אפשרויות. השב באות שמופיעה ברשימה.`
+      `יש ${choice.optionCount} אפשרויות. להשיב באות שמופיעה ברשימה.`
     );
     return;
   }
@@ -305,7 +305,7 @@ async function handleChoice(userId, senderPhone, choice) {
     }
 
     default:
-      await sendWhatsAppMessage(senderPhone, 'לא הצלחתי להשלים את הבחירה. נסה לשלוח את הבקשה שוב.');
+      await sendWhatsAppMessage(senderPhone, 'לא הצלחתי להשלים את הבחירה. אפשר לשלוח את הבקשה שוב.');
   }
 }
 
@@ -320,7 +320,7 @@ async function handleChoice(userId, senderPhone, choice) {
  */
 async function handleVoiceNote(userId, phone, mediaId) {
   if (!mediaId) {
-    await sendWhatsAppMessage(phone, 'לא הצלחתי לקרוא את ההקלטה. נסה לשלוח שוב.');
+    await sendWhatsAppMessage(phone, 'לא הצלחתי לקרוא את ההקלטה. אפשר לשלוח שוב.');
     return null;
   }
 
@@ -335,12 +335,12 @@ async function handleVoiceNote(userId, phone, mediaId) {
     transcript = await transcribeAudio(audio.buffer, audio.mimeType, 'he');
   } catch (error) {
     console.error('Voice note failed:', error.message);
-    await sendWhatsAppMessage(phone, 'לא הצלחתי לתמלל את ההקלטה. נסה שוב או שלח כטקסט.');
+    await sendWhatsAppMessage(phone, 'לא הצלחתי לתמלל את ההקלטה. אפשר לנסות שוב, או לכתוב את הבקשה.');
     return null;
   }
 
   if (!transcript) {
-    await sendWhatsAppMessage(phone, 'ההקלטה יצאה ריקה. נסה להקליט שוב.');
+    await sendWhatsAppMessage(phone, 'ההקלטה יצאה ריקה. אפשר להקליט שוב.');
     return null;
   }
 
@@ -369,7 +369,7 @@ async function handleVoiceNote(userId, phone, mediaId) {
     `מה לשלוח לנמען?\n` +
     `א. את המילים כהודעת טקסט\n` +
     `ב. את ההקלטה המקורית\n\n` +
-    `השב באות. שים לב: הקלטה מגיעה רק למי שכתב לבוט ב-24 השעות האחרונות — ` +
+    `להשיב באות. לתשומת לבכם: הקלטה מגיעה רק למי שכתב לבוט ב-24 השעות האחרונות — ` +
     `אחרת תישלח גרסת הטקסט.`
   );
 
@@ -392,7 +392,7 @@ async function resolveRecipients(userId, entities) {
       return {
         reply: `יש לי כמה קבוצות בשם הזה. לאיזו?\n\n` +
           formatOptions(candidates, g => g.name) +
-          `\n\nהשב באות.`,
+          `\n\nלהשיב באות.`,
         choice: {
           kind: 'schedule_group',
           options: candidates.map(g => ({ name: g.name, group_id: g.group_id }))
@@ -405,7 +405,7 @@ async function resolveRecipients(userId, entities) {
 
     const members = await getGroupMembers(userId, match.group_id);
     if (members.length === 0) {
-      return { reply: `הקבוצה "${match.name}" ריקה. הוסף אליה אנשי קשר קודם.` };
+      return { reply: `הקבוצה "${match.name}" ריקה. צריך להוסיף אליה אנשי קשר קודם.` };
     }
 
     return {
@@ -431,7 +431,7 @@ async function resolveRecipients(userId, entities) {
       return {
         reply: `יש לי כמה אנשי קשר בשם הזה. למי מהם?\n\n` +
           formatOptions(candidates, c => `${c.name} — ${c.phone_number}`) +
-          `\n\nהשב באות.`,
+          `\n\nלהשיב באות.`,
         choice: {
           kind: 'schedule_recipient',
           options: candidates.map(c => ({ name: c.name, phone: c.phone_number }))
@@ -484,7 +484,7 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
 
     if (missing.length > 0) {
       const hint = resolved.missingRecipientName
-        ? `\n\nאין לי מספר שמור עבור ${resolved.missingRecipientName}. שלח פעם אחת עם המספר, ואשמור אותו.`
+        ? `\n\nאין לי מספר שמור עבור ${resolved.missingRecipientName}. אפשר לשלוח פעם אחת עם המספר, ואשמור אותו.`
         : '';
       await sendWhatsAppMessage(
         senderPhone,
@@ -497,7 +497,7 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
     // typo — sending immediately would surprise the user more than asking.
     const scheduledAt = new Date(scheduled_timestamp);
     if (Number.isNaN(scheduledAt.getTime())) {
-      await sendWhatsAppMessage(senderPhone, 'לא הצלחתי להבין את המועד. נסה למשל "מחר ב-9:00" או "עוד שעתיים".');
+      await sendWhatsAppMessage(senderPhone, 'לא הצלחתי להבין את המועד. אפשר למשל "מחר ב-9:00" או "עוד שעתיים".');
       return;
     }
     if (scheduledAt.getTime() < Date.now() - 60_000) {
@@ -575,7 +575,7 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
     );
   } catch (error) {
     console.error('Error scheduling message:', error.message, error.stack);
-    await sendWhatsAppMessage(senderPhone, 'לא הצלחתי לתזמן את ההודעה. נסה שוב.');
+    await sendWhatsAppMessage(senderPhone, 'לא הצלחתי לתזמן את ההודעה. אפשר לנסות שוב.');
   }
 }
 

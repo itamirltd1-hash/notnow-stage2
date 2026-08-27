@@ -40,8 +40,8 @@ export async function requestConsent(userId, phone, senderName = 'משתמש') {
   const normalized = normalizePhoneNumber(phone);
 
   const ask =
-    `${senderName} מבקש לתזמן עבורך הודעות דרך NotNow. ` +
-    `השב א לאישור, או ב לסירוב — ואז לא נפנה אליך שוב.`;
+    `התקבלה בקשה לתזמן עבורך הודעות דרך NotNow. ` +
+    `להסכמה להשיב א, לסירוב ב — ואז לא נפנה אליך שוב.`;
 
   try {
     // A recipient who wrote to us recently can be asked in plain text.

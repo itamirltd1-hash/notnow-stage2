@@ -139,12 +139,12 @@ export async function runGroupCommand(userId, command) {
   switch (command.action) {
     case 'create': {
       const group = await createGroup(userId, a);
-      return `נוצרה קבוצה "${group.name}".\nעכשיו הוסף אליה אנשים:\nהוסף ל${group.name} 0501111111 דנה`;
+      return `נוצרה קבוצה "${group.name}".\nעכשיו אפשר להוסיף אליה אנשים:\nהוסף ל${group.name} 0501111111 דנה`;
     }
 
     case 'add': {
       const { match } = await findGroupsByName(userId, a);
-      if (!match) return `אין לי קבוצה בשם "${a}". צור אותה קודם: צור קבוצה ${a}`;
+      if (!match) return `אין לי קבוצה בשם "${a}". אפשר ליצור אותה קודם: צור קבוצה ${a}`;
 
       const phone = normalizePhoneNumber(b);
       if (!phone) return `"${b}" לא נראה כמו מספר טלפון תקין.`;
@@ -188,7 +188,7 @@ export async function runGroupCommand(userId, command) {
         return {
           reply: `יש כמה בשם "${b}" ב"${match.name}". את מי להסיר?\n` +
             formatOptions(target, m => `${m.name} ${m.phone_number}`) +
-            `\n\nהשב באות.`,
+            `\n\nלהשיב באות.`,
           choice: {
             kind: 'remove_member',
             payload: {
