@@ -94,9 +94,9 @@ async function describeEntry(entry) {
     ? `לקבוצת ${await groupName(entry.groupId)} (${entry.recipientCount} אנשים)`
     : `ל${entry.recipientName || entry.recipientPhone}${entry.recipientName ? ` ${entry.recipientPhone}` : ''}`;
 
-  const what = entry.mediaId ? '🎙️ הקלטה' : `"${entry.messageBody}"`;
+  const what = entry.mediaId ? 'הקלטה' : `"${entry.messageBody}"`;
   const waiting = entry.awaiting > 0
-    ? (entry.groupId ? ` — ⏳ ${entry.awaiting} ממתינים לאישור` : ' — ⏳ ממתין לאישור')
+    ? (entry.groupId ? ` — ${entry.awaiting} עדיין לא אישרו` : ' — ממתין לאישור הנמען')
     : '';
 
   return `${who} — ${formatWhen(entry.scheduledAt)} — ${what}${waiting}`;
@@ -106,33 +106,33 @@ export async function runQueueCommand(userId, command) {
   const entries = await getPendingEntries(userId);
 
   if (command.action === 'list') {
-    if (entries.length === 0) return 'אין הודעות בתור.';
+    if (entries.length === 0) return 'אין כרגע הודעות שממתינות לשליחה.';
     const lines = await Promise.all(entries.map(async (e, i) => `${i + 1}. ${await describeEntry(e)}`));
-    return `בתור (${entries.length}):\n${lines.join('\n')}\n\nלביטול: בטל 1`;
+    return `${entries.length} הודעות ממתינות:\n${lines.join('\n')}\n\nלביטול אחת מהן — למשל "בטל 1".`;
   }
 
   // Cancelling
-  if (entries.length === 0) return 'אין מה לבטל — התור ריק.';
+  if (entries.length === 0) return 'אין כרגע הודעות שממתינות, אז אין מה לבטל.';
 
   if (command.target === null) {
     const lines = await Promise.all(entries.map(async (e, i) => `${i + 1}. ${await describeEntry(e)}`));
-    return `מה לבטל?\n${lines.join('\n')}\n\nכתוב למשל: בטל 1  (או: בטל הכל)`;
+    return `איזו מהן לבטל?\n${lines.join('\n')}\n\nלמשל "בטל 1", או "בטל הכל".`;
   }
 
   if (command.target === 'all') {
     const ids = entries.flatMap(e => e.queueIds);
     await cancelIds(userId, ids);
-    return `בוטלו כל ${entries.length} ההודעות שהיו בתור.`;
+    return `ביטלתי את כל ${entries.length} ההודעות שהמתינו.`;
   }
 
   const index = command.target;
   if (index < 1 || index > entries.length) {
-    return `אין הודעה מספר ${index}. יש ${entries.length} בתור — כתוב "מה בתור" לרשימה.`;
+    return `אין הודעה מספר ${index} — יש ${entries.length} בתור. "מה בתור" יציג את הרשימה.`;
   }
 
   const entry = entries[index - 1];
   await cancelIds(userId, entry.queueIds);
-  return `בוטלה: ${await describeEntry(entry)}`;
+  return `ביטלתי. ${await describeEntry(entry)}`;
 }
 
 /**

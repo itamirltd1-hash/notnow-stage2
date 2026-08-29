@@ -139,42 +139,42 @@ export async function runGroupCommand(userId, command) {
   switch (command.action) {
     case 'create': {
       const group = await createGroup(userId, a);
-      return `נוצרה קבוצה "${group.name}".\nעכשיו אפשר להוסיף אליה אנשים:\nהוסף ל${group.name} 0501111111 דנה`;
+      return `הקבוצה "${group.name}" נוצרה.\n\nאפשר להוסיף אליה אנשים כך:\nהוסף ל${group.name} 0501111111 דנה`;
     }
 
     case 'add': {
       const { match } = await findGroupsByName(userId, a);
-      if (!match) return `אין לי קבוצה בשם "${a}". אפשר ליצור אותה קודם: צור קבוצה ${a}`;
+      if (!match) return `אין לי קבוצה בשם "${a}". אפשר ליצור אותה קודם:\nצור קבוצה ${a}`;
 
       const phone = normalizePhoneNumber(b);
-      if (!phone) return `"${b}" לא נראה כמו מספר טלפון תקין.`;
+      if (!phone) return `"${b}" לא נראה לי כמו מספר טלפון. אפשר לכתוב אותו שוב?`;
 
       const name = c || 'איש קשר';
       await addGroupMember(userId, match.group_id, phone, name);
       const members = await getGroupMembers(userId, match.group_id);
-      return `${name} (${phone}) נוסף ל"${match.name}".\nבקבוצה עכשיו ${members.length} אנשים.`;
+      return `${name} ${phone} נוסף לקבוצה "${match.name}". יש בה עכשיו ${members.length}.`;
     }
 
     case 'members': {
       const { match, candidates } = await findGroupsByName(userId, a);
       if (!match) {
         if (candidates.length > 1) {
-          return `יש כמה קבוצות בשם הזה:\n${candidates.map(g => `• ${g.name}`).join('\n')}`;
+          return `יש לי כמה קבוצות בשם דומה:\n${candidates.map(g => `• ${g.name}`).join('\n')}`;
         }
         return null; // probably not a group question at all
       }
 
       const members = await getGroupMembers(userId, match.group_id);
-      if (members.length === 0) return `הקבוצה "${match.name}" ריקה.`;
+      if (members.length === 0) return `אין עדיין אף אחד בקבוצה "${match.name}".`;
 
-      const label = { granted: '✓ אישר', declined: '✗ סירב', requested: '⏳ ממתין', unknown: '– טרם נשאל' };
-      return `"${match.name}" — ${members.length} אנשים:\n` +
-        members.map(m => `• ${m.name} ${m.phone_number} ${label[m.consent_status] || ''}`).join('\n');
+      const label = { granted: 'אישר', declined: 'סירב', requested: 'ממתין לאישור', unknown: 'טרם נשאל' };
+      return `בקבוצה "${match.name}" יש ${members.length}:\n` +
+        members.map(m => `• ${m.name} ${m.phone_number} — ${label[m.consent_status] || ''}`).join('\n');
     }
 
     case 'remove': {
       const { match } = await findGroupsByName(userId, a);
-      if (!match) return `אין לי קבוצה בשם "${a}".`;
+      if (!match) return `אין לי קבוצה בשם "${a}". אפשר לראות את כולן עם "קבוצות".`;
 
       const members = await getGroupMembers(userId, match.group_id);
       const phone = normalizePhoneNumber(b);
@@ -182,11 +182,11 @@ export async function runGroupCommand(userId, command) {
         m.phone_number === phone || m.name.toLowerCase() === b.trim().toLowerCase()
       );
 
-      if (target.length === 0) return `לא מצאתי את "${b}" ב"${match.name}".`;
+      if (target.length === 0) return `לא מצאתי את "${b}" בקבוצה "${match.name}".`;
 
       if (target.length > 1) {
         return {
-          reply: `יש כמה בשם "${b}" ב"${match.name}". את מי להסיר?\n` +
+          reply: `יש כמה אנשים בשם "${b}" בקבוצה "${match.name}". את מי להסיר?\n` +
             formatOptions(target, m => `${m.name} ${m.phone_number}`) +
             `\n\nלהשיב באות.`,
           choice: {
@@ -203,7 +203,7 @@ export async function runGroupCommand(userId, command) {
       }
 
       await removeGroupMember(userId, match.group_id, target[0].contact_id);
-      return `${target[0].name} (${target[0].phone_number}) הוסר מ"${match.name}".`;
+      return `${target[0].name} ${target[0].phone_number} הוסר מהקבוצה "${match.name}".`;
     }
 
     default:

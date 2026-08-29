@@ -17,6 +17,8 @@ import { isGreeting, isHelpRequest, welcomeMessage, helpMessage, consentClarific
 import { parseQueueCommand, runQueueCommand } from '../queue/queueCommands.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
 import { isExempt } from '../billing/exemptions.js';
+import { isQuotaQuestion, describeQuota, quotaWarningLine } from '../billing/quotaCommands.js';
+import { answerServiceQuestion } from '../meta/faq.js';
 import { downloadMedia } from '../meta/mediaDownload.js';
 import { transcribeAudio, isTranscriptionAvailable } from '../llm/transcriber.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
@@ -142,6 +144,21 @@ router.post('/webhook', async (req, res) => {
       return;
     }
 
+    // "כמה נשאר לי" and the handful of questions people ask about how this
+    // works are answered from static text — no model call for either.
+    if (type === 'text') {
+      if (isQuotaQuestion(text)) {
+        await sendWhatsAppMessage(phone, await describeQuota(req.userId, phone));
+        return;
+      }
+
+      const faq = answerServiceQuestion(text);
+      if (faq) {
+        await sendWhatsAppMessage(phone, faq);
+        return;
+      }
+    }
+
     // Seeing and cancelling the queue: also patterns, for the same reason as
     // group management — cancelling the wrong message is not recoverable.
     if (type === 'text') {
@@ -231,6 +248,12 @@ router.post('/webhook', async (req, res) => {
     // Handle different intents
     switch (intent) {
       case 'SCHEDULE_MESSAGE':
+        // "על הבוקר" is a range, not a time. Guessing one and being wrong is
+        // worse than a single short question, so ask which they meant.
+        if (intentResult.timeIsVague && intentResult.timeOptions?.length === 2) {
+          await askWhichTime(req.userId, phone, entities, confirmationText, intentResult.timeOptions);
+          break;
+        }
         await handleScheduleMessage(req.userId, phone, entities, confirmationText);
         break;
 
@@ -257,6 +280,30 @@ router.post('/webhook', async (req, res) => {
     console.error('❌ Error processing webhook:', error.message, error.stack);
   }
 });
+
+/**
+ * Ask which clock time a vague phrase meant, offering the two the model
+ * proposed for it. Cheaper than guessing wrong on a message that goes out
+ * hours later, when there is nothing left to correct.
+ */
+async function askWhichTime(userId, senderPhone, entities, confirmationText, options) {
+  const label = iso => new Date(iso).toLocaleTimeString('he-IL', {
+    timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit'
+  });
+
+  await storeChoice(userId, senderPhone, 'schedule_time', {
+    options: options.map(iso => ({ iso, label: label(iso) })),
+    entities,
+    confirmationText
+  });
+
+  await sendWhatsAppMessage(
+    senderPhone,
+    `באיזו שעה בדיוק?\n` +
+    formatOptions(options.map(iso => ({ iso })), o => label(o.iso)) +
+    `\n\nלהשיב באות.`
+  );
+}
 
 /**
  * Act on a one-letter answer to whatever the bot last asked.
@@ -295,6 +342,12 @@ async function handleChoice(userId, senderPhone, choice) {
           ? `${option.name} (${option.phone}) הוסר מ"${payload.groupName}".`
           : `לא הצלחתי להסיר את ${option.name}.`
       );
+      return;
+    }
+
+    case 'schedule_time': {
+      const entities = { ...payload.entities, scheduled_timestamp: option.iso };
+      await handleScheduleMessage(userId, senderPhone, entities, payload.confirmationText);
       return;
     }
 
@@ -576,9 +629,15 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
       await incrementMonthlyUsage(userId, billed);
     }
 
+    // Read the quota after recording usage, so the number quoted is what is
+    // actually left. Rides along with the confirmation rather than arriving
+    // as a message of its own.
+    const warning = billed > 0 ? await quotaWarningLine(userId, senderPhone) : null;
+
     await sendWhatsAppMessage(
       senderPhone,
       buildScheduleConfirmation({ group, confirmationText, queued, awaitingConsent, declined })
+        + (warning || '')
     );
 
     console.log(

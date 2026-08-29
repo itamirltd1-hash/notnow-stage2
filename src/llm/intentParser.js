@@ -43,6 +43,8 @@ export async function parseSchedulingIntent(userMessage, language = 'he') {
       entities: parsed.entities,
       language: parsed.language,
       confirmationText: parsed.confirmation_text,
+      timeIsVague: parsed.time_is_vague === true,
+      timeOptions: Array.isArray(parsed.time_options) ? parsed.time_options : null,
       error: parsed.error_text || null
     };
   } catch (error) {
@@ -107,6 +109,14 @@ For each message, respond ONLY with a valid JSON object in this exact format:
     "scheduled_timestamp": "2026-08-01T17:00:00Z" (ISO 8601) or null,
     "delivery_channel": "whatsapp" | "gmail" (default: whatsapp)
   },
+  "time_is_vague": true only when the user named a part of the day rather than
+    a time ("על הבוקר", "בצהריים", "בערב", "לפנות ערב", "אחר הצהריים").
+    false when they gave a clock time, a relative offset ("עוד שעתיים"), or
+    nothing at all.
+  "time_options": when time_is_vague is true, exactly two plausible clock
+    times for that phrase as ISO 8601, earliest first — for example
+    "על הבוקר" → 08:00 and 10:00, "בצהריים" → 12:00 and 13:30,
+    "בערב" → 18:00 and 20:00. Otherwise null.
   "confirmation_text": "A friendly confirmation message in the user's language",
   "error_text": null or "An error message if parsing failed"
 }
