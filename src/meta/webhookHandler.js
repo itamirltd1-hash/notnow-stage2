@@ -60,7 +60,10 @@ export function extractMessageFromWebhook(body) {
       phone: message.from,
       messageId: message.id,
       timestamp: message.timestamp,
-      type: message.type
+      type: message.type,
+      // WhatsApp sends the sender's own profile name alongside every message,
+      // which spares us asking a new user what to call them.
+      profileName: changes?.value?.contacts?.[0]?.profile?.name || null
     };
 
     if (message.type === 'text') {

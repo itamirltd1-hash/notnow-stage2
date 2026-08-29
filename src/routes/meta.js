@@ -18,6 +18,7 @@ import {
   isPendingRecipient, SYNTAX_HELP
 } from '../groups/groupCommands.js';
 import { isGreeting, isHelpRequest, welcomeMessage, helpMessage, consentClarification } from '../meta/welcome.js';
+import { parseNameCommand, runNameCommand, rememberProfileName, getDisplayName } from '../auth/displayName.js';
 import { parseQueueCommand, runQueueCommand } from '../queue/queueCommands.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
 import { isExempt } from '../billing/exemptions.js';
@@ -80,7 +81,7 @@ router.post('/webhook', async (req, res) => {
       return; // Not a text message, skip
     }
 
-    const { phone, type, mediaId } = messageData;
+    const { phone, type, mediaId, profileName } = messageData;
     let { text } = messageData;
 
     // Sanitize phone number (should be digits and +)
@@ -137,11 +138,25 @@ router.post('/webhook', async (req, res) => {
       console.log(`✅ Registered user ${newUser.user_id} for ${phone}`);
     }
 
+    // Keep the profile name current unless the user has picked their own.
+    await rememberProfileName(req.userId, profileName);
+
     // A first message, a greeting or a request for help are all answered from
     // static text — no model call, no "לא הבנתי" as an opening impression.
     if (type === 'text' && (isNewUser || isGreeting(text))) {
-      await sendWhatsAppMessage(phone, isNewUser ? welcomeMessage() : helpMessage());
+      await sendWhatsAppMessage(
+        phone,
+        isNewUser ? welcomeMessage(profileName) : helpMessage()
+      );
       return;
+    }
+
+    if (type === 'text') {
+      const nameCommand = parseNameCommand(text);
+      if (nameCommand) {
+        await sendWhatsAppMessage(phone, await runNameCommand(req.userId, nameCommand));
+        return;
+      }
     }
     if (type === 'text' && isHelpRequest(text)) {
       await sendWhatsAppMessage(phone, helpMessage());
@@ -659,7 +674,10 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
       } else {
         awaitingConsent.push(recipient.name || recipient.phone);
         if (consent === 'unknown') {
-          await requestConsent(userId, recipient.phone, 'משתמש NotNow');
+          // The recipient sees this name and nothing else about the sender,
+          // so it has to be one they would recognise.
+          const senderName = await getDisplayName(userId);
+          await requestConsent(userId, recipient.phone, senderName);
         }
       }
 

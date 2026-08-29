@@ -136,8 +136,10 @@ async function handleFailedMessage(message, error) {
     if (retryCount > maxRetries) {
       // Give up after max retries
       await pool.query(
-        'UPDATE active_queue SET status = $1, updated_at = NOW() WHERE queue_id = $2',
-        ['failed', message.queue_id]
+        `UPDATE active_queue
+            SET status = 'failed', error_message = $1, updated_at = NOW()
+          WHERE queue_id = $2`,
+        [error.message?.slice(0, 500) || null, message.queue_id]
       );
 
       await logActivity(message.user_id, 'message_failed', {
@@ -147,6 +149,9 @@ async function handleFailedMessage(message, error) {
       });
 
       console.error(`❌ Message ${message.queue_id} failed after ${retryCount} retries`);
+
+      // Silence here means the sender believes the message went out. Tell them.
+      await notifySenderOfFailure(message);
       return;
     }
 
@@ -169,6 +174,46 @@ async function handleFailedMessage(message, error) {
     console.log(`🔄 Scheduled retry ${retryCount} for message ${message.queue_id} at ${nextRetryAt}`);
   } catch (retryError) {
     console.error('Error handling failed message:', retryError.message);
+  }
+}
+
+/**
+ * Tell the person who scheduled a message that it never arrived.
+ *
+ * Without this the queue row turns to 'failed' and nothing else happens — the
+ * sender is left believing it went out. Best effort: if this notification
+ * itself cannot be delivered, the failure is already in the log.
+ */
+async function notifySenderOfFailure(message) {
+  try {
+    const owner = await pool.query(
+      `SELECT phone_number FROM contacts
+        WHERE user_id = $1 AND is_owner = TRUE LIMIT 1`,
+      [message.user_id]
+    );
+    const senderPhone = owner.rows[0]?.phone_number;
+    if (!senderPhone) return;
+
+    // Only reachable while the sender's own window is open, which is the
+    // common case: they were talking to the bot when they scheduled it.
+    if (!(await isWithinServiceWindow(senderPhone))) {
+      console.log(`   Cannot notify ${senderPhone} of the failure — outside their window`);
+      return;
+    }
+
+    const when = new Date(message.scheduled_at).toLocaleString('he-IL', {
+      timeZone: 'Asia/Jerusalem', day: '2-digit', month: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    });
+    const who = message.recipient_name || message.recipient_phone;
+
+    await sendWhatsAppMessage(
+      senderPhone,
+      `ההודעה ל${who} שתוזמנה ל-${when} לא נשלחה.\n\n` +
+      `אפשר לנסות לתזמן אותה שוב.`
+    );
+  } catch (error) {
+    console.error('Could not notify sender of failure:', error.message);
   }
 }
 

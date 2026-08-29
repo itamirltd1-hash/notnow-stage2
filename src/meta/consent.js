@@ -36,11 +36,15 @@ export async function getConsentStatus(userId, phone) {
  * cheaper than being reported: reports are what drive quality rating down and
  * get a number restricted.
  */
-export async function requestConsent(userId, phone, senderName = 'משתמש') {
+export async function requestConsent(userId, phone, senderName = null) {
   const normalized = normalizePhoneNumber(phone);
 
+  // Naming the sender is the difference between a message a recipient
+  // recognises and one that reads like an unsolicited approach.
+  const who = senderName ? `${senderName} ביקש` : 'התקבלה בקשה';
+
   const ask =
-    `התקבלה בקשה לתזמן עבורך הודעות דרך NotNow. ` +
+    `${who} לתזמן עבורך הודעות דרך NotNow. ` +
     `להסכמה להשיב א, לסירוב ב — ואז לא נפנה אליך שוב.`;
 
   try {

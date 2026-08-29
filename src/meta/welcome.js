@@ -14,7 +14,14 @@ export function isHelpRequest(text) {
 /**
  * Shown once, the first time a number ever writes to the bot.
  */
-export function welcomeMessage() {
+export function welcomeMessage(profileName = null) {
+  // Say up front which name recipients will see. Finding that out only after
+  // five clients received "🔥BOSS🔥 ביקש..." is too late.
+  const naming = profileName
+    ? `\n\nכשאבקש אישור מנמען חדש, אציג אותך בשם "${profileName}". ` +
+      `לשינוי — "קרא לי [שם]".`
+    : '';
+
   return (
     'שלום! אני NotNow 👋\n' +
     'אני מתזמן הודעות WhatsApp — אומרים לי מה, למי ומתי, ואני שולח בזמן.\n\n' +
@@ -26,7 +33,7 @@ export function welcomeMessage() {
     '• צור קבוצה טסטרים\n' +
     '• הוסף לטסטרים 0501111111 דנה\n' +
     '• תשלח לקבוצת טסטרים מחר ב-10 "בוקר טוב"\n\n' +
-    'לרשימת הפקודות המלאה — לכתוב "עזרה".'
+    'לרשימת הפקודות המלאה — לכתוב "עזרה".' + naming
   );
 }
 
