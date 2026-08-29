@@ -62,6 +62,43 @@ export async function sendWhatsAppMessage(recipientPhone, messageText) {
  * error 132001 — hours after scheduling, when nobody is watching. Checking
  * at startup turns that into a line in the deploy log.
  */
+/**
+ * Report whether the number this service sends from is actually able to send.
+ *
+ * A number can sit in the dashboard looking configured while its status is
+ * still PENDING, in which case every send fails for a reason that has nothing
+ * to do with the code.
+ */
+export async function reportPhoneStatus() {
+  const apiToken = process.env.META_API_TOKEN;
+  const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
+
+  if (!apiToken || !phoneNumberId) return;
+
+  try {
+    const response = await axios.get(`https://graph.facebook.com/v18.0/${phoneNumberId}`, {
+      params: {
+        access_token: apiToken,
+        fields: 'display_phone_number,verified_name,status,quality_rating,platform_type'
+      },
+      timeout: 10000
+    });
+
+    const p = response.data;
+    console.log(`📱 Sending from ${p.display_phone_number} "${p.verified_name}" — ${p.status}`);
+
+    if (p.status !== 'CONNECTED') {
+      console.warn(`   ⚠️  Status is ${p.status}, not CONNECTED — sends will fail until it is`);
+    }
+    if (p.quality_rating && p.quality_rating !== 'GREEN') {
+      console.warn(`   ⚠️  Quality rating is ${p.quality_rating}`);
+    }
+  } catch (error) {
+    const detail = error.response?.data?.error?.message || error.message;
+    console.warn('📱 Could not read the sending number:', detail);
+  }
+}
+
 export async function reportTemplateStatus() {
   const apiToken = process.env.META_API_TOKEN;
   const wabaId = process.env.META_BUSINESS_ACCOUNT_ID;
