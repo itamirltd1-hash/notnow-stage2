@@ -1,5 +1,5 @@
 import pool from '../db/pool.js';
-import { sendWhatsAppMessage, sendTemplateMessage, sendAudioMessage } from '../meta/sendHandler.js';
+import { sendWhatsAppMessage, sendTemplateMessage, sendAudioMessage, sendMediaMessage } from '../meta/sendHandler.js';
 import { isWithinServiceWindow } from '../meta/serviceWindow.js';
 
 const BATCH_SIZE = 100;
@@ -88,22 +88,26 @@ export async function dispatchPendingMessages() {
  * Returns success or throws error.
  */
 async function sendMessage(message) {
-  const { channel, recipient_phone, recipient_name, message_body, media_id } = message;
+  const { channel, recipient_phone, recipient_name, message_body, media_id, media_type } = message;
 
   if (channel === 'whatsapp') {
     // Free-form text reaches only people who wrote to us in the last 24 hours.
     // Everyone else must be reached through the approved template.
     if (await isWithinServiceWindow(recipient_phone)) {
-      // A recording can only travel inside the window — the sender was told
-      // that when they chose it, so falling back to text here is expected.
       if (media_id) {
-        return await sendAudioMessage(recipient_phone, media_id);
+        // media_type was added later; rows from before it default to audio,
+        // which is the only kind that existed then.
+        return media_type === 'image' || media_type === 'video'
+          ? await sendMediaMessage(recipient_phone, media_id, media_type, message_body)
+          : await sendAudioMessage(recipient_phone, media_id);
       }
       return await sendWhatsAppMessage(recipient_phone, message_body);
     }
 
     if (media_id) {
-      console.log(`   ${recipient_phone} is outside the window — sending text instead of the recording`);
+      // No approved template carries a file, so the words go without it. The
+      // sender was told this could happen when they attached it.
+      console.log(`   ${recipient_phone} is outside the window — sending the text without the file`);
     }
 
     console.log(`   ${recipient_phone} is outside the 24h window — using template`);

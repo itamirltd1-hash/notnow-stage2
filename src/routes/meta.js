@@ -10,6 +10,10 @@ import { getConsentStatus, requestConsent, handleConsentReply } from '../meta/co
 import { findGroupsByName, getGroupMembers, listGroups, removeGroupMember } from '../groups/groupService.js';
 import { storeChoice, resolveChoice, formatOptions } from '../meta/pendingChoice.js';
 import {
+  storePendingMedia, peekPendingMedia, clearPendingMedia,
+  isWithinMediaHorizon, MAX_MEDIA_DAYS, MAX_CAPTION
+} from '../meta/pendingMedia.js';
+import {
   parseGroupCommand, runGroupCommand, looksLikeGroupCommand,
   isPendingRecipient, SYNTAX_HELP
 } from '../groups/groupCommands.js';
@@ -190,6 +194,21 @@ router.post('/webhook', async (req, res) => {
         // Opens with a management verb but matches no command — a wording slip.
         // Showing the syntax beats sending it to the scheduler to fail there.
         await sendWhatsAppMessage(phone, `לא זיהיתי את הפקודה.\n\n${SYNTAX_HELP}`);
+        return;
+      }
+    }
+
+    // A photo or video is held aside. If it arrived with a caption saying what
+    // to do, that caption continues as the message; otherwise the sender is
+    // told the file is waiting for an instruction.
+    if (type === 'image' || type === 'video') {
+      await storePendingMedia(req.userId, phone, mediaId, type, text);
+      if (!text) {
+        await sendWhatsAppMessage(
+          phone,
+          `קיבלתי את ה${type === 'image' ? 'תמונה' : 'סרטון'}. למי ומתי לשלוח אותו?\n` +
+          `למשל: תשלח את זה לדני 0501234567 מחר ב-9:00`
+        );
         return;
       }
     }
@@ -508,10 +527,19 @@ async function resolveRecipients(userId, entities) {
  * into an individual 1-on-1 message per member, each with its own queue row,
  * consent state and delivery status.
  */
-async function handleScheduleMessage(userId, senderPhone, entities, confirmationText, mediaId = null) {
+async function handleScheduleMessage(userId, senderPhone, entities, confirmationText, mediaId = null, mediaType = null) {
   try {
     const { message_body, scheduled_timestamp, delivery_channel } = entities;
     console.log('   Entities:', JSON.stringify(entities));
+
+    // "תשלח את זה לדני מחר" refers to the photo sent a moment ago.
+    if (!mediaId) {
+      const held = await peekPendingMedia(senderPhone);
+      if (held) {
+        mediaId = held.media_id;
+        mediaType = held.media_type;
+      }
+    }
 
     const resolved = await resolveRecipients(userId, entities);
     if (resolved.reply) {
@@ -560,6 +588,25 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
       return;
     }
 
+    // Meta keeps an uploaded file for about a month, so a photo scheduled
+    // beyond that would be queued only to fail on the day. Say so now.
+    if (mediaId && !isWithinMediaHorizon(scheduledAt)) {
+      await sendWhatsAppMessage(
+        senderPhone,
+        `קבצים נשמרים אצל וואטסאפ לזמן מוגבל, ולכן אפשר לתזמן אותם עד ${MAX_MEDIA_DAYS} ימים קדימה בלבד.\n\n` +
+        `אפשר לתזמן את הקובץ למועד קרוב יותר, או לשלוח עכשיו הודעת טקסט בלבד למועד הרחוק.`
+      );
+      return;
+    }
+
+    if (mediaId && message_body && message_body.length > MAX_CAPTION) {
+      await sendWhatsAppMessage(
+        senderPhone,
+        `הכיתוב לקובץ ארוך מדי — עד ${MAX_CAPTION} תווים. אפשר לקצר אותו?`
+      );
+      return;
+    }
+
     // Each recipient costs one message, so a group of ten costs ten — except
     // for exempt numbers, which are free in both directions.
     const senderExempt = isExempt(senderPhone);
@@ -597,13 +644,13 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
       const result = await userQuery(
         userId,
         `INSERT INTO active_queue
-         (user_id, recipient_phone, recipient_name, message_body, channel, scheduled_at, status, group_id, media_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (user_id, recipient_phone, recipient_name, message_body, channel, scheduled_at, status, group_id, media_id, media_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING queue_id`,
         [
           recipient.phone, recipient.name, message_body,
           delivery_channel || 'whatsapp', scheduled_timestamp, status,
-          group?.group_id || null, mediaId
+          group?.group_id || null, mediaId, mediaType
         ]
       );
 
@@ -628,6 +675,10 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
     if (billed > 0) {
       await incrementMonthlyUsage(userId, billed);
     }
+
+    // The file is now attached to a queued message and should not latch onto
+    // the next request as well.
+    if (mediaId) await clearPendingMedia(senderPhone);
 
     // Read the quota after recording usage, so the number quoted is what is
     // actually left. Rides along with the confirmation rather than arriving

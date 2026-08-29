@@ -100,6 +100,57 @@ export async function sendAudioMessage(recipientPhone, mediaId) {
 }
 
 /**
+ * Send an image or a video, optionally with a caption.
+ *
+ * Like audio, media cannot travel inside the approved template, so this only
+ * reaches someone inside the 24-hour service window.
+ */
+export async function sendMediaMessage(recipientPhone, mediaId, mediaType, caption = null) {
+  const apiToken = process.env.META_API_TOKEN;
+  const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
+
+  if (!apiToken || !phoneNumberId) {
+    throw new Error('META_API_TOKEN or META_PHONE_NUMBER_ID not configured');
+  }
+  if (mediaType !== 'image' && mediaType !== 'video') {
+    throw new Error(`Unsupported media type: ${mediaType}`);
+  }
+
+  const payload = { id: mediaId };
+  if (caption) payload.caption = caption.slice(0, 1024);
+
+  console.log(`🖼️  Sending ${mediaType} ${mediaId} to ${recipientPhone}`);
+
+  try {
+    const response = await axios.post(
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to: recipientPhone,
+        type: mediaType,
+        [mediaType]: payload
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 20000
+      }
+    );
+
+    const messageId = response.data.messages?.[0]?.id;
+    console.log(`✅ ${mediaType} sent! ID: ${messageId}`);
+    return { success: true, messageId, timestamp: new Date().toISOString() };
+  } catch (error) {
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    console.error(`❌ Meta Media Error (${recipientPhone}):`, errorMsg);
+    console.error(`   Full error:`, error.response?.data);
+    throw new Error(`Failed to send ${mediaType}: ${errorMsg}`);
+  }
+}
+
+/**
  * Send an approved template message.
  *
  * Templates are the only way to reach someone outside the 24-hour service

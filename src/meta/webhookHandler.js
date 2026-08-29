@@ -73,6 +73,16 @@ export function extractMessageFromWebhook(body) {
       return { ...base, text: null, mediaId: message.audio?.id };
     }
 
+    // A photo or video may carry its instruction as a caption, or arrive bare
+    // with the instruction following in the next message.
+    if (message.type === 'image' || message.type === 'video') {
+      return {
+        ...base,
+        text: message[message.type]?.caption || null,
+        mediaId: message[message.type]?.id
+      };
+    }
+
     return null;
   } catch (error) {
     console.error('Error extracting message from webhook:', error.message);
