@@ -12,6 +12,7 @@ import billingRouter from './src/routes/billing.js';
 import externalApiRouter from './src/routes/externalApi.js';
 import { enforceQuota } from './src/billing/quotaMiddleware.js';
 import { exemptCount, listExempt } from './src/billing/exemptions.js';
+import { reportTemplateStatus } from './src/meta/sendHandler.js';
 import { dispatchPendingMessages, getDispatcherMetrics } from './src/dispatcher/batchDispatcher.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -294,5 +295,9 @@ app.use((req, res) => {
     console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
     console.log(`🔒 Security: Webhook signature validation enabled`);
     console.log(`🔒 Security: Rate limiting enabled`);
+
+    // Not awaited: a template misconfiguration should be reported, not block
+    // the service from accepting webhooks.
+    reportTemplateStatus();
   });
 })();

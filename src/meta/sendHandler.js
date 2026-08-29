@@ -55,6 +55,69 @@ export async function sendWhatsAppMessage(recipientPhone, messageText) {
 }
 
 /**
+ * Report which templates Meta actually holds, and whether the one this
+ * service is configured to send matches one of them.
+ *
+ * A name or language that does not match is rejected at send time with
+ * error 132001 — hours after scheduling, when nobody is watching. Checking
+ * at startup turns that into a line in the deploy log.
+ */
+export async function reportTemplateStatus() {
+  const apiToken = process.env.META_API_TOKEN;
+  const wabaId = process.env.META_BUSINESS_ACCOUNT_ID;
+  const wantName = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
+  const wantLang = process.env.META_TEMPLATE_LANGUAGE || 'he';
+
+  console.log(`📄 Template configured: "${wantName}" (${wantLang})`);
+
+  if (!apiToken || !wabaId) {
+    console.warn('   Cannot verify — META_API_TOKEN or META_BUSINESS_ACCOUNT_ID missing');
+    return;
+  }
+
+  try {
+    const response = await axios.get(
+      `https://graph.facebook.com/v18.0/${wabaId}/message_templates`,
+      { params: { access_token: apiToken, limit: 50 }, timeout: 10000 }
+    );
+
+    const templates = response.data.data || [];
+    if (templates.length === 0) {
+      console.warn('   ⚠️  This WhatsApp account holds no templates at all');
+      return;
+    }
+
+    console.log('   Available:');
+    for (const t of templates) {
+      console.log(`     "${t.name}" (${t.language}) — ${t.status}`);
+    }
+
+    const exact = templates.find(t => t.name === wantName && t.language === wantLang);
+    if (exact) {
+      console.log(exact.status === 'APPROVED'
+        ? '   ✅ Configured template matches and is approved'
+        : `   ⚠️  Configured template matches but its status is ${exact.status}`);
+      return;
+    }
+
+    const sameName = templates.filter(t => t.name === wantName);
+    if (sameName.length > 0) {
+      console.warn(
+        `   ⚠️  Name matches but language does not. Set META_TEMPLATE_LANGUAGE to ` +
+        `one of: ${sameName.map(t => t.language).join(', ')}`
+      );
+    } else {
+      console.warn(
+        `   ⚠️  No template named "${wantName}". Set META_TEMPLATE_NAME to one of: ` +
+        templates.map(t => t.name).join(', ')
+      );
+    }
+  } catch (error) {
+    console.warn('   Could not read templates:', error.response?.data?.error?.message || error.message);
+  }
+}
+
+/**
  * Send a voice note by re-using the media id Meta gave us on the way in.
  *
  * Audio cannot travel inside a template, so this only reaches someone inside
