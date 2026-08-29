@@ -2,6 +2,7 @@ import pool from '../db/pool.js';
 import { normalizePhoneNumber } from '../auth/userContextExtractor.js';
 import { sendWhatsAppMessage, sendTemplateMessage } from './sendHandler.js';
 import { isWithinServiceWindow } from './serviceWindow.js';
+import { BRAND } from '../brand.js';
 
 const TEMPLATE_NAME = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
 const TEMPLATE_LANGUAGE = process.env.META_TEMPLATE_LANGUAGE || 'he';
@@ -44,7 +45,7 @@ export async function requestConsent(userId, phone, senderName = null) {
   const who = senderName ? `${senderName} ביקש` : 'התקבלה בקשה';
 
   const ask =
-    `${who} לתזמן עבורך הודעות דרך NotNow. ` +
+    `${who} לתזמן עבורך הודעות דרך ${BRAND}. ` +
     `להסכמה להשיב א, לסירוב ב — ואז לא נפנה אליך שוב.`;
 
   try {

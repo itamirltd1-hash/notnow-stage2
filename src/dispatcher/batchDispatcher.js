@@ -6,7 +6,9 @@ const BATCH_SIZE = 100;
 const RETRY_DELAYS = [5000, 15000, 60000]; // 5s, 15s, 60s backoff
 
 // Must match the template approved in Meta exactly, or every send is rejected.
-// Body: "שלום {{1}}, תזכורת להודעה: {{2}} (נשלח מ-NotNow)"
+// Body: "שלום {{1}}, תזכורת להודעה: {{2}} (נשלח מ-Cue)"
+// The brand appears inside that approved body, so renaming it means
+// re-submitting the template — see src/brand.js.
 const TEMPLATE_NAME = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
 const TEMPLATE_LANGUAGE = process.env.META_TEMPLATE_LANGUAGE || 'he';
 

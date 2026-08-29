@@ -1,3 +1,5 @@
+import { BRAND } from '../brand.js';
+
 // A first message used to cost a model call and come back as "לא הבנתי" —
 // the worst possible introduction. These are matched before anything else.
 const GREETING = /^\s*(היי|הי|שלום|הלו|אהלן|start|hi|hello|hey)\s*[!.?]?\s*$/i;
@@ -23,7 +25,7 @@ export function welcomeMessage(profileName = null) {
     : '';
 
   return (
-    'שלום! אני NotNow 👋\n' +
+    `שלום! אני ${BRAND} 👋\n` +
     'אני מתזמן הודעות WhatsApp — אומרים לי מה, למי ומתי, ואני שולח בזמן.\n\n' +
     'אפשר פשוט לכתוב לי במילים חופשיות:\n' +
     '• שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"\n' +
@@ -71,7 +73,7 @@ export function helpMessage() {
  */
 export function consentClarification() {
   return (
-    'התקבלה בקשה לתזמן עבורך הודעה דרך NotNow.\n\n' +
+    `התקבלה בקשה לתזמן עבורך הודעה דרך ${BRAND}.\n\n` +
     'א. מאשר/ת — אפשר לשלוח לי\n' +
     'ב. לא מעוניין/ת — אל תפנו אליי שוב\n\n' +
     'להשיב באות.'
