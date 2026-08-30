@@ -6,6 +6,7 @@ import { parseSchedulingIntent, detectLanguage } from '../llm/intentParser.js';
 import { extractWhatsappUserContext } from '../middleware/whatsappUserContext.js';
 import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender, normalizePhoneNumber, findContactsByName } from '../auth/userContextExtractor.js';
 import { recordInboundMessage } from '../meta/serviceWindow.js';
+import { deliverDeferredMedia } from '../meta/deferredMedia.js';
 import { getConsentStatus, requestConsent, handleConsentReply } from '../meta/consent.js';
 import { findGroupsByName, getGroupMembers, listGroups, removeGroupMember } from '../groups/groupService.js';
 import { storeChoice, resolveChoice, formatOptions } from '../meta/pendingChoice.js';
@@ -97,6 +98,9 @@ router.post('/webhook', async (req, res) => {
 
     // This inbound message opens a 24-hour window for free-form replies
     await recordInboundMessage(phone);
+
+    // Which is exactly when a file we promised them can finally be sent.
+    await deliverDeferredMedia(phone);
 
     // A question the bot asked a moment ago outranks any older state: the
     // letter was offered for that question, so resolve it first. The stored

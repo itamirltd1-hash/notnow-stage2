@@ -1,6 +1,7 @@
 import pool from '../db/pool.js';
 import { sendWhatsAppMessage, sendTemplateMessage, sendAudioMessage, sendMediaMessage } from '../meta/sendHandler.js';
 import { isWithinServiceWindow } from '../meta/serviceWindow.js';
+import { markMediaDeferred } from '../meta/deferredMedia.js';
 
 const BATCH_SIZE = 100;
 const RETRY_DELAYS = [5000, 15000, 60000]; // 5s, 15s, 60s backoff
@@ -107,9 +108,10 @@ async function sendMessage(message) {
     }
 
     if (media_id) {
-      // No approved template carries a file, so the words go without it. The
-      // sender was told this could happen when they attached it.
-      console.log(`   ${recipient_phone} is outside the window — sending the text without the file`);
+      // No approved template carries a file, so the words go without it — and
+      // the file is owed to them the moment their reply opens the window.
+      console.log(`   ${recipient_phone} is outside the window — text now, file when they reply`);
+      await markMediaDeferred(message.queue_id);
     }
 
     console.log(`   ${recipient_phone} is outside the 24h window — using template`);

@@ -15,11 +15,14 @@ const TEMPLATE_LANGUAGE = process.env.META_TEMPLATE_LANGUAGE || 'he';
 const AGREE = /^\s*(כן|קבל|קבלי|מקבל|מקבלת|לקבל|מאשר|מאשרת|אשמח|אישור|מסכים|מסכימה|סבבה|בטח|טוב|אין\s+בעיה|אוקיי|אוקי|בסדר|yes|y|ok|okay|sure|accept|start)\s*[!.]?\s*$/i;
 const REFUSE = /^\s*(לא|הסר|הסירו|תסיר|תסירו|הסירי|בטל|בטלו|הפסק|הפסיקו|די|מסרב|מסרבת|לא\s+מעוניין|לא\s+מעוניינת|stop|unsubscribe|remove|no|decline)\s*[!.]?\s*$/i;
 
-// A bare letter only answers a consent question that is actually open. A
-// tenant whose own contact row is already 'granted' answers letters to the
-// bot's other questions all the time — those must not land here.
-const LETTER_YES = /^\s*(א|a)\s*[!.]?\s*$/i;
-const LETTER_NO = /^\s*(ב|b)\s*[!.]?\s*$/i;
+// A bare letter or digit only answers a consent question that is actually
+// open. A tenant whose own contact row is already 'granted' answers letters
+// to the bot's other questions all the time — those must not land here.
+//
+// Digits are accepted despite "בטל 2" using them, because that ambiguity
+// cannot arise: a recipient answering a consent request has no queue.
+const LETTER_YES = /^\s*(א|a|1)\s*[!.]?\s*$/i;
+const LETTER_NO = /^\s*(ב|b|2)\s*[!.]?\s*$/i;
 
 /**
  * Does this recipient have an answer on file, one way or the other?
