@@ -27,17 +27,31 @@ function fail(message) {
 function reportError(error) {
   const err = error.response?.data?.error;
   console.error(`❌ ${err?.message || error.message}`);
-  if (err?.error_data?.details) console.error(`   ${err.error_data.details}`);
-  if (err?.code) console.error(`   code: ${err.code}`);
+  // Meta scatters the useful part across several fields; print whatever came.
+  for (const [label, value] of [
+    ['details', err?.error_data?.details],
+    ['user title', err?.error_user_title],
+    ['user message', err?.error_user_msg],
+    ['code', err?.code],
+    ['subcode', err?.error_subcode],
+    ['type', err?.type]
+  ]) {
+    if (value !== undefined && value !== null) console.error(`   ${label}: ${value}`);
+  }
   process.exit(1);
 }
+
+// The rest of the service authenticates with a bearer header and Meta accepts
+// it; passing the token as a query parameter alongside a JSON body does not
+// reliably work on every endpoint.
+const auth = { headers: { Authorization: `Bearer ${token}` } };
 
 if (!token || !phoneId) fail('META_API_TOKEN and META_PHONE_NUMBER_ID must be set');
 
 async function status() {
   const { data } = await axios.get(`${GRAPH}/${phoneId}`, {
+    ...auth,
     params: {
-      access_token: token,
       fields: 'display_phone_number,verified_name,status,code_verification_status,quality_rating,platform_type'
     }
   });
@@ -52,7 +66,8 @@ async function status() {
 
 async function requestCode() {
   await axios.post(`${GRAPH}/${phoneId}/request_code`, null, {
-    params: { access_token: token, code_method: 'SMS', language: 'he' }
+    ...auth,
+    params: { code_method: 'SMS', language: 'he' }
   });
   console.log('✅ Code requested. It arrives by SMS at the number itself.');
   console.log('   Then run:  npm run phone verify 123456');
@@ -61,7 +76,8 @@ async function requestCode() {
 async function verify(code) {
   if (!code) fail('Pass the 6-digit code:  npm run phone verify 123456');
   await axios.post(`${GRAPH}/${phoneId}/verify_code`, null, {
-    params: { access_token: token, code }
+    ...auth,
+    params: { code }
   });
   console.log('✅ Code accepted.');
   console.log('   Then run:  npm run phone register 447722   (choose any 6 digits)');
@@ -74,10 +90,12 @@ async function register(pin) {
   }
   await axios.post(`${GRAPH}/${phoneId}/register`, {
     messaging_product: 'whatsapp',
-    pin
+    pin: String(pin)
   }, {
-    params: { access_token: token },
-    headers: { 'Content-Type': 'application/json' }
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
   });
   console.log('✅ Registered. Checking status...\n');
   await status();
