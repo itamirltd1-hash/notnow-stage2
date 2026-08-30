@@ -273,7 +273,23 @@ router.post('/webhook', async (req, res) => {
     // A low-confidence guess is a misunderstanding, not an instruction —
     // ask rather than act on it.
     const MIN_CONFIDENCE = 0.5;
-    const tooUncertain = (intentResult.confidence ?? 0) < MIN_CONFIDENCE;
+
+    // Unless the request is already complete. With a file attached, a
+    // recipient and a time, nothing is missing — the model's doubt is about
+    // the empty message text, which is empty on purpose. Three attempts to
+    // settle that in the prompt produced 0.75, 0.65 and 0.45 on the same
+    // sentence, so it is settled here instead, against what we can verify.
+    const e = intentResult.entities || {};
+    const requestIsComplete = hasMedia
+      && Boolean(e.recipient_phone || e.recipient_name || e.recipient_group)
+      && Boolean(e.scheduled_timestamp);
+
+    const tooUncertain =
+      (intentResult.confidence ?? 0) < MIN_CONFIDENCE && !requestIsComplete;
+
+    if (requestIsComplete && (intentResult.confidence ?? 0) < MIN_CONFIDENCE) {
+      console.log('   Acting anyway: file, recipient and time are all present');
+    }
 
     if (!intentResult.success || !intentResult.intent || tooUncertain) {
       // Claude usually phrases the clarification better, and in the user's
