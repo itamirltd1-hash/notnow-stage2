@@ -1,6 +1,7 @@
 import pool from '../db/pool.js';
 import { normalizePhoneNumber } from '../auth/userContextExtractor.js';
 import { sendMediaMessage, sendAudioMessage } from './sendHandler.js';
+import { senderSignature, sign } from './attribution.js';
 
 /**
  * Deliver files that were promised but could not be sent at the time.
@@ -19,7 +20,7 @@ export async function deliverDeferredMedia(phone) {
   let rows;
   try {
     const result = await pool.query(
-      `SELECT queue_id, media_id, media_type, message_body
+      `SELECT queue_id, user_id, media_id, media_type, message_body
          FROM active_queue
         WHERE recipient_phone = $1 AND media_deferred = TRUE AND media_id IS NOT NULL
         ORDER BY queue_id ASC
@@ -39,7 +40,8 @@ export async function deliverDeferredMedia(phone) {
   for (const row of rows) {
     try {
       if (row.media_type === 'image' || row.media_type === 'video') {
-        await sendMediaMessage(normalized, row.media_id, row.media_type, row.message_body);
+        const signature = await senderSignature(row.user_id, normalized);
+        await sendMediaMessage(normalized, row.media_id, row.media_type, sign(row.message_body, signature));
       } else {
         await sendAudioMessage(normalized, row.media_id);
       }

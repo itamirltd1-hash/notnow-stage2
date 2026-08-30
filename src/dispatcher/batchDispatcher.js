@@ -2,6 +2,7 @@ import pool from '../db/pool.js';
 import { sendWhatsAppMessage, sendTemplateMessage, sendAudioMessage, sendMediaMessage } from '../meta/sendHandler.js';
 import { isWithinServiceWindow } from '../meta/serviceWindow.js';
 import { markMediaDeferred } from '../meta/deferredMedia.js';
+import { senderSignature, sign, signInline } from '../meta/attribution.js';
 
 const BATCH_SIZE = 100;
 const RETRY_DELAYS = [5000, 15000, 60000]; // 5s, 15s, 60s backoff
@@ -94,6 +95,10 @@ async function sendMessage(message) {
   const { channel, recipient_phone, recipient_name, message_body, media_id, media_type } = message;
 
   if (channel === 'whatsapp') {
+    // The recipient sees the business number, not the person who wrote this,
+    // so the name travels in the text. Null for a message to oneself.
+    const signature = await senderSignature(message.user_id, recipient_phone);
+
     // Free-form text reaches only people who wrote to us in the last 24 hours.
     // Everyone else must be reached through the approved template.
     if (await isWithinServiceWindow(recipient_phone)) {
@@ -101,10 +106,10 @@ async function sendMessage(message) {
         // media_type was added later; rows from before it default to audio,
         // which is the only kind that existed then.
         return media_type === 'image' || media_type === 'video'
-          ? await sendMediaMessage(recipient_phone, media_id, media_type, message_body)
+          ? await sendMediaMessage(recipient_phone, media_id, media_type, sign(message_body, signature))
           : await sendAudioMessage(recipient_phone, media_id);
       }
-      return await sendWhatsAppMessage(recipient_phone, message_body);
+      return await sendWhatsAppMessage(recipient_phone, sign(message_body, signature));
     }
 
     if (media_id) {
@@ -122,7 +127,8 @@ async function sendMessage(message) {
       recipient_phone,
       TEMPLATE_NAME,
       TEMPLATE_LANGUAGE,
-      [recipient_name || 'שלום', body]
+      // The template's own sentence wraps this, so the signature goes inline.
+      [recipient_name || 'שלום', signInline(body, signature)]
     );
   } else if (channel === 'email') {
     // TODO: Implement email sending via Resend
