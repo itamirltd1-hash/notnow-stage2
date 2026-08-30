@@ -1,6 +1,53 @@
 import axios from 'axios';
 
 /**
+ * Turn a Meta send failure into the thing to actually go and do.
+ *
+ * Whether a payment method is attached cannot be read from the API, so the
+ * only moment it can be reported is when a send is rejected for it. The same
+ * is true of most of these: the code is the only signal, and "(#131042)
+ * Business eligibility payment issue" does not tell anyone to open billing.
+ */
+const ERROR_GUIDANCE = {
+  131042: 'No payment method on the WhatsApp account. Template messages are billable — ' +
+          'add one under WhatsApp Manager → Payment settings.',
+  131047: 'Outside the 24-hour window and no template was used. Free-form text only ' +
+          'reaches someone who wrote to us in the last 24 hours.',
+  132000: 'The template expects a different number of parameters than were sent.',
+  132001: 'No such template on the account that owns the sending number. Template and ' +
+          'phone number must live on the same WhatsApp account.',
+  132005: 'The template exists but is not approved in this language.',
+  131026: 'The recipient cannot receive messages — the number may not be on WhatsApp.',
+  131031: 'The sending account is restricted or disabled.',
+  133010: 'The sending number is not registered for the Cloud API. Run: npm run phone status',
+  130429: 'Rate limit reached. The dispatcher will retry.',
+  131056: 'Too many messages to this same recipient in a short period.',
+  190: 'The access token is invalid or expired.',
+  2388001: 'The number is still attached to a regular WhatsApp account and must be ' +
+           'disconnected there first.'
+};
+
+export function explainMetaError(error) {
+  const err = error.response?.data?.error;
+  const code = err?.error_subcode || err?.code;
+  return ERROR_GUIDANCE[code] || ERROR_GUIDANCE[err?.code] || null;
+}
+
+function logMetaError(label, recipientPhone, error) {
+  const err = error.response?.data?.error;
+  const message = err?.message || error.message;
+
+  console.error(`❌ ${label} (${recipientPhone}): ${message}`);
+
+  const guidance = explainMetaError(error);
+  if (guidance) {
+    console.error(`   → ${guidance}`);
+  } else {
+    console.error('   Full error:', error.response?.data);
+  }
+}
+
+/**
  * Send a WhatsApp message via Meta Cloud API.
  * Requires: META_API_TOKEN, META_PHONE_NUMBER_ID
  */
@@ -47,21 +94,64 @@ export async function sendWhatsAppMessage(recipientPhone, messageText) {
     };
   } catch (error) {
     const errorMsg = error.response?.data?.error?.message || error.message;
-    console.error(`❌ Meta API Error (${recipientPhone}):`, errorMsg);
-    console.error(`   Status: ${error.response?.status}`);
-    console.error(`   Full error:`, error.response?.data);
+    logMetaError('Meta API Error', recipientPhone, error);
     throw new Error(`Failed to send WhatsApp message: ${errorMsg}`);
   }
 }
 
 /**
- * Report which templates Meta actually holds, and whether the one this
- * service is configured to send matches one of them.
+ * Report the account-level limits that stop a send before the code is
+ * involved at all.
  *
- * A name or language that does not match is rejected at send time with
- * error 132001 — hours after scheduling, when nobody is watching. Checking
- * at startup turns that into a line in the deploy log.
+ * A template to someone outside the 24-hour window is billable, so without a
+ * payment method it fails — and an unverified business can only reach a
+ * limited number of distinct people per day. Neither shows up as anything
+ * other than a rejected send, which is a bad way to learn about them.
  */
+export async function reportAccountLimits() {
+  const apiToken = process.env.META_API_TOKEN;
+  const wabaId = process.env.META_BUSINESS_ACCOUNT_ID;
+
+  if (!apiToken || !wabaId) return;
+
+  try {
+    const response = await axios.get(`https://graph.facebook.com/v18.0/${wabaId}`, {
+      params: {
+        access_token: apiToken,
+        fields: 'name,account_review_status,business_verification_status,message_template_namespace'
+      },
+      timeout: 10000
+    });
+
+    const a = response.data;
+    console.log(`🏦 Account "${a.name}" — review: ${a.account_review_status || 'unknown'}, ` +
+      `business verification: ${a.business_verification_status || 'unknown'}`);
+
+    if (a.business_verification_status && a.business_verification_status !== 'verified') {
+      console.warn('   ⚠️  Business not verified — capped at 250 distinct recipients per 24h');
+    }
+  } catch (error) {
+    const detail = error.response?.data?.error?.message || error.message;
+    console.warn('🏦 Could not read account status:', detail);
+  }
+
+  // Messaging limits live on the phone number, not the account.
+  const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
+  if (!phoneNumberId) return;
+
+  try {
+    const response = await axios.get(`https://graph.facebook.com/v18.0/${phoneNumberId}`, {
+      params: { access_token: apiToken, fields: 'throughput,messaging_limit_tier' },
+      timeout: 10000
+    });
+
+    const tier = response.data.messaging_limit_tier;
+    if (tier) console.log(`   Messaging limit tier: ${tier}`);
+  } catch {
+    // Not every account exposes this; its absence is not worth a warning.
+  }
+}
+
 /**
  * Report whether the number this service sends from is actually able to send.
  *
@@ -99,6 +189,14 @@ export async function reportPhoneStatus() {
   }
 }
 
+/**
+ * Report which templates Meta actually holds, and whether the one this
+ * service is configured to send matches one of them.
+ *
+ * A name or language that does not match is rejected at send time with error
+ * 132001 — hours after scheduling, when nobody is watching. Checking at
+ * startup turns that into a line in the deploy log.
+ */
 export async function reportTemplateStatus() {
   const apiToken = process.env.META_API_TOKEN;
   const wabaId = process.env.META_BUSINESS_ACCOUNT_ID;
@@ -193,8 +291,7 @@ export async function sendAudioMessage(recipientPhone, mediaId) {
     return { success: true, messageId, timestamp: new Date().toISOString() };
   } catch (error) {
     const errorMsg = error.response?.data?.error?.message || error.message;
-    console.error(`❌ Meta Audio Error (${recipientPhone}):`, errorMsg);
-    console.error(`   Full error:`, error.response?.data);
+    logMetaError('Meta Audio Error', recipientPhone, error);
     throw new Error(`Failed to send voice note: ${errorMsg}`);
   }
 }
@@ -244,8 +341,7 @@ export async function sendMediaMessage(recipientPhone, mediaId, mediaType, capti
     return { success: true, messageId, timestamp: new Date().toISOString() };
   } catch (error) {
     const errorMsg = error.response?.data?.error?.message || error.message;
-    console.error(`❌ Meta Media Error (${recipientPhone}):`, errorMsg);
-    console.error(`   Full error:`, error.response?.data);
+    logMetaError('Meta Media Error', recipientPhone, error);
     throw new Error(`Failed to send ${mediaType}: ${errorMsg}`);
   }
 }
@@ -306,8 +402,7 @@ export async function sendTemplateMessage(recipientPhone, templateName, template
     };
   } catch (error) {
     const errorMsg = error.response?.data?.error?.message || error.message;
-    console.error(`❌ Meta Template Error (${recipientPhone}):`, errorMsg);
-    console.error(`   Full error:`, error.response?.data);
+    logMetaError('Meta Template Error', recipientPhone, error);
     throw new Error(`Failed to send template message: ${errorMsg}`);
   }
 }

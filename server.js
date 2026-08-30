@@ -12,7 +12,7 @@ import billingRouter from './src/routes/billing.js';
 import externalApiRouter from './src/routes/externalApi.js';
 import { enforceQuota } from './src/billing/quotaMiddleware.js';
 import { exemptCount, listExempt } from './src/billing/exemptions.js';
-import { reportTemplateStatus, reportPhoneStatus } from './src/meta/sendHandler.js';
+import { reportTemplateStatus, reportPhoneStatus, reportAccountLimits } from './src/meta/sendHandler.js';
 import { ensureWebhookSubscription } from './src/meta/webhookSubscription.js';
 import { dispatchPendingMessages, getDispatcherMetrics } from './src/dispatcher/batchDispatcher.js';
 
@@ -303,6 +303,7 @@ app.use((req, res) => {
     (async () => {
       await ensureWebhookSubscription();
       await reportPhoneStatus();
+      await reportAccountLimits();
       await reportTemplateStatus();
     })();
   });
