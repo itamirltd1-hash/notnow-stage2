@@ -7,6 +7,8 @@ import { extractWhatsappUserContext } from '../middleware/whatsappUserContext.js
 import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender, normalizePhoneNumber, findContactsByName } from '../auth/userContextExtractor.js';
 import { recordInboundMessage } from '../meta/serviceWindow.js';
 import { deliverDeferredMedia } from '../meta/deferredMedia.js';
+import { isErasureRequest, eraseByPhone, ERASURE_CONFIRMATION } from '../privacy/erasure.js';
+import { isTermsAcceptance, hasAcceptedTerms, recordAcceptance, termsPrompt, acceptanceConfirmation } from '../legal/terms.js';
 import { getConsentStatus, requestConsent, handleConsentReply } from '../meta/consent.js';
 import { findGroupsByName, getGroupMembers, listGroups, removeGroupMember } from '../groups/groupService.js';
 import { storeChoice, resolveChoice, formatOptions } from '../meta/pendingChoice.js';
@@ -113,6 +115,14 @@ router.post('/webhook', async (req, res) => {
       }
     }
 
+    // Asking to be deleted must not first create an account for the person
+    // asking, so it is handled before identity like consent is.
+    if (type === 'text' && isErasureRequest(text)) {
+      await sendWhatsAppMessage(phone, ERASURE_CONFIRMATION);
+      await eraseByPhone(phone);
+      return;
+    }
+
     // A recipient answering "כן" or "הסר" is not issuing a command — resolve
     // consent before anything can mistake them for a tenant and register them.
     if (type === 'text' && await handleConsentReply(phone, text)) {
@@ -158,6 +168,12 @@ router.post('/webhook', async (req, res) => {
           : isNewUser ? welcomeMessage(profileName)
           : helpMessage()
       );
+      return;
+    }
+
+    if (type === 'text' && isTermsAcceptance(text) && !(await hasAcceptedTerms(req.userId))) {
+      await recordAcceptance(req.userId);
+      await sendWhatsAppMessage(phone, acceptanceConfirmation());
       return;
     }
 
@@ -582,6 +598,14 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
         mediaId = held.media_id;
         mediaType = held.media_type;
       }
+    }
+
+    // Scheduling is the act that creates obligations towards other people —
+    // it waits for agreement. Everything else, including asking for help or
+    // to be removed, stays available.
+    if (!(await hasAcceptedTerms(userId))) {
+      await sendWhatsAppMessage(senderPhone, termsPrompt());
+      return;
     }
 
     const resolved = await resolveRecipients(userId, entities);

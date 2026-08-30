@@ -15,6 +15,7 @@ import { exemptCount, listExempt } from './src/billing/exemptions.js';
 import { reportTemplateStatus, reportPhoneStatus, reportAccountLimits } from './src/meta/sendHandler.js';
 import { ensureWebhookSubscription } from './src/meta/webhookSubscription.js';
 import { dispatchPendingMessages, getDispatcherMetrics } from './src/dispatcher/batchDispatcher.js';
+import { purgeExpiredData } from './src/retention/purge.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -282,6 +283,11 @@ setInterval(async () => {
     console.log(`Dispatcher: ${metrics.processed} messages processed`);
   }
 }, 60000);
+
+// Retention. Hourly rather than on a schedule of its own: there is never much
+// to remove in an hour, and a purge that only runs at 3am is a purge that
+// silently stops running.
+setInterval(purgeExpiredData, 60 * 60 * 1000);
 
 // Dispatcher metrics endpoint (for monitoring)
 app.get('/api/dispatcher/metrics', async (req, res) => {

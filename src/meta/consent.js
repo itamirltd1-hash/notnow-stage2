@@ -3,6 +3,7 @@ import { normalizePhoneNumber } from '../auth/userContextExtractor.js';
 import { sendWhatsAppMessage, sendTemplateMessage } from './sendHandler.js';
 import { isWithinServiceWindow } from './serviceWindow.js';
 import { BRAND } from '../brand.js';
+import { isSuppressed } from '../privacy/erasure.js';
 
 const TEMPLATE_NAME = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
 const TEMPLATE_LANGUAGE = process.env.META_TEMPLATE_LANGUAGE || 'he';
@@ -45,6 +46,13 @@ export async function getConsentStatus(userId, phone) {
  */
 export async function requestConsent(userId, phone, senderName = null) {
   const normalized = normalizePhoneNumber(phone);
+
+  // Asking permission is still contact. Someone who asked to be erased is not
+  // asked again.
+  if (await isSuppressed(normalized)) {
+    console.log(`🚫 Not requesting consent from ${normalized} — on the suppression list`);
+    return false;
+  }
 
   // Naming the sender is the difference between a message a recipient
   // recognises and one that reads like an unsolicited approach.

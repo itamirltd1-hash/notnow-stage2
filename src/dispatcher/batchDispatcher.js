@@ -3,6 +3,7 @@ import { sendWhatsAppMessage, sendTemplateMessage, sendAudioMessage, sendMediaMe
 import { isWithinServiceWindow } from '../meta/serviceWindow.js';
 import { markMediaDeferred } from '../meta/deferredMedia.js';
 import { senderSignature, sign, signInline } from '../meta/attribution.js';
+import { isSuppressed } from '../privacy/erasure.js';
 
 const BATCH_SIZE = 100;
 const RETRY_DELAYS = [5000, 15000, 60000]; // 5s, 15s, 60s backoff
@@ -44,6 +45,18 @@ export async function dispatchPendingMessages() {
     let failed = 0;
 
     for (const message of messages) {
+      // An erasure is final, so this is cancelled rather than retried — three
+      // attempts to contact someone who asked not to be is exactly wrong.
+      if (await isSuppressed(message.recipient_phone)) {
+        await pool.query(
+          `UPDATE active_queue SET status = 'cancelled', updated_at = NOW()
+            WHERE queue_id = $1`,
+          [message.queue_id]
+        );
+        console.log(`🚫 queue_id=${message.queue_id} cancelled — recipient asked to be removed`);
+        continue;
+      }
+
       try {
         const sendResult = await sendMessage(message);
         sent++;
@@ -95,6 +108,12 @@ async function sendMessage(message) {
   const { channel, recipient_phone, recipient_name, message_body, media_id, media_type } = message;
 
   if (channel === 'whatsapp') {
+    // Someone who asked to be erased stays erased, even if a message to them
+    // was queued before the request or they were re-added afterwards.
+    if (await isSuppressed(recipient_phone)) {
+      throw new Error(`${recipient_phone} asked to be removed and is not contacted`);
+    }
+
     // The recipient sees the business number, not the person who wrote this,
     // so the name travels in the text. Null for a message to oneself.
     const signature = await senderSignature(message.user_id, recipient_phone);
