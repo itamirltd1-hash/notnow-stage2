@@ -64,6 +64,13 @@ function validateEnvironment() {
     console.warn('Some features may not work without these values');
   }
 
+  // Which code is actually running. Without this, "did my push deploy?" can
+  // only be answered by hunting for a behaviour change in the logs.
+  const sha = process.env.RAILWAY_GIT_COMMIT_SHA;
+  const message = process.env.RAILWAY_GIT_COMMIT_MESSAGE;
+  console.log(`🏷️  Build: ${sha ? sha.slice(0, 7) : 'unknown'}` +
+    (message ? ` — ${message.split('\n')[0]}` : ''));
+
   // Diagnostic: report shape of each credential without leaking its value.
   const shape = (key) => {
     const v = process.env[key];
