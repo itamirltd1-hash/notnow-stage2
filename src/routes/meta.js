@@ -253,9 +253,11 @@ router.post('/webhook', async (req, res) => {
     // Detect language
     const language = detectLanguage(text);
 
-    // Parse intent using Claude Haiku
-    console.log(`🧠 Parsing intent for: "${text}"`);
-    const intentResult = await parseSchedulingIntent(text, language);
+    // Parse intent using Claude Haiku. Tell it when a file is waiting, so it
+    // does not treat the absent message text as something missing.
+    const hasMedia = Boolean(mediaId) || Boolean(await peekPendingMedia(phone));
+    console.log(`🧠 Parsing intent for: "${text}"${hasMedia ? ' (with media)' : ''}`);
+    const intentResult = await parseSchedulingIntent(text, language, { hasMedia });
     console.log(`   Result:`, intentResult);
 
     // A low-confidence guess is a misunderstanding, not an instruction —
@@ -576,7 +578,8 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
 
     const missing = [];
     if (recipients.length === 0) missing.push('מספר הנמען');
-    if (!message_body) missing.push('תוכן ההודעה');
+    // An attached photo or recording is the content; text is then optional.
+    if (!message_body && !mediaId) missing.push('תוכן ההודעה');
     if (!scheduled_timestamp) missing.push('מועד השליחה');
 
     if (missing.length > 0) {

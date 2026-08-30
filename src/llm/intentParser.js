@@ -7,9 +7,9 @@ const MODEL = 'claude-haiku-4-5-20251001';
  * Parse user message intent using Claude Haiku 4.5 with Structured Outputs.
  * Extracts: intent, recipient, message body, scheduled timestamp, language.
  */
-export async function parseSchedulingIntent(userMessage, language = 'he') {
+export async function parseSchedulingIntent(userMessage, language = 'he', options = {}) {
   try {
-    const systemPrompt = buildSystemPrompt(language);
+    const systemPrompt = buildSystemPrompt(language, options);
 
     const response = await axios.post(
       CLAUDE_API_URL,
@@ -81,7 +81,17 @@ function stripCodeFence(text) {
  * Build the system prompt for Claude to parse scheduling intents.
  * Tailored to Hebrew-first, but handles Hebrew/English mix.
  */
-function buildSystemPrompt(language) {
+function buildSystemPrompt(language, { hasMedia = false } = {}) {
+  // A photo captioned "שלח למירית עוד 2 דקות" is a complete request: the photo
+  // is what gets delivered. Without knowing that, the model reports a missing
+  // message body, which reads as a failed parse and drops confidence.
+  const mediaNote = hasMedia
+    ? '\n\nIMPORTANT: a photo or video is attached to this request. That file IS ' +
+      'the content to be delivered, so "message_body" may be null and its absence ' +
+      'is NOT a problem — never report it as missing, and never lower confidence ' +
+      'for it. Any text present is the caption, which is optional.\n'
+    : '';
+
   const nowUtc = new Date();
   const nowLocal = nowUtc.toLocaleString('sv-SE', { timeZone: 'Asia/Jerusalem' });
 
@@ -91,7 +101,7 @@ CURRENT TIME REFERENCE (use this to resolve relative times like "tomorrow", "in 
 - Current time in Israel (Asia/Jerusalem): ${nowLocal}
 - Current time in UTC: ${nowUtc.toISOString()}
 The user speaks in Israel local time. Convert to UTC for "scheduled_timestamp".
-
+${mediaNote}
 The user will send messages in Hebrew or English asking to schedule messages, cancel messages, list queue, or upgrade tier.
 
 For each message, respond ONLY with a valid JSON object in this exact format:
