@@ -718,7 +718,12 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
 
     await sendWhatsAppMessage(
       senderPhone,
-      buildScheduleConfirmation({ group, confirmationText, queued, awaitingConsent, declined })
+      buildScheduleConfirmation({
+        group, confirmationText, queued, awaitingConsent, declined,
+        mediaType: mediaId ? mediaType : null,
+        scheduledAt: scheduled_timestamp,
+        recipients
+      })
         + (warning || '')
     );
 
@@ -732,13 +737,43 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
   }
 }
 
+const MEDIA_WORD = { image: 'התמונה', video: 'הסרטון', audio: 'ההקלטה' };
+
+/**
+ * Name the file and when it goes. Nothing here is a guess, so nothing here
+ * needs a model to phrase it.
+ */
+function mediaConfirmation({ mediaType, scheduledAt, recipients, group }) {
+  const what = MEDIA_WORD[mediaType] || 'הקובץ';
+  const when = new Date(scheduledAt).toLocaleString('he-IL', {
+    timeZone: 'Asia/Jerusalem',
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+  });
+
+  const who = group
+    ? `לקבוצת ${group.name}`
+    : `ל${recipients[0]?.name || recipients[0]?.phone || 'נמען'}`;
+
+  return `קיבלתי. ${what} תישלח ${who} ב-${when}.`;
+}
+
 /**
  * Tell the sender exactly what will happen, including who is still pending —
  * silence about a held message reads as a message that was sent.
  */
-function buildScheduleConfirmation({ group, confirmationText, queued, awaitingConsent, declined }) {
+function buildScheduleConfirmation({
+  group, confirmationText, queued, awaitingConsent, declined,
+  mediaType, scheduledAt, recipients
+}) {
+  // When a file is attached the model keeps apologising for the message text
+  // it thinks is missing, twice now despite being told not to. This sentence
+  // has to be exact, so it is written here rather than asked for.
+  const headline = mediaType
+    ? mediaConfirmation({ mediaType, scheduledAt, recipients, group })
+    : confirmationText;
+
   if (!group && awaitingConsent.length === 0 && declined.length === 0) {
-    return confirmationText;
+    return headline;
   }
 
   const lines = [];
@@ -747,7 +782,7 @@ function buildScheduleConfirmation({ group, confirmationText, queued, awaitingCo
     const total = queued.length + awaitingConsent.length;
     lines.push(`קבוצת "${group.name}": ${total} הודעות אישיות נפרדות תוזמנו.`);
   } else if (queued.length > 0) {
-    lines.push(confirmationText);
+    lines.push(headline);
   }
 
   if (awaitingConsent.length > 0) {

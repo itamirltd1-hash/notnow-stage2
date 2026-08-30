@@ -194,7 +194,16 @@ app.use((req, res, next) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, data: { status: 'ok', timestamp: new Date().toISOString() } });
+  // The commit is here so "is my fix live?" can be answered without reading
+  // the deploy log — it is the question that keeps interrupting debugging.
+  res.json({
+    success: true,
+    data: {
+      status: 'ok',
+      build: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || 'unknown',
+      timestamp: new Date().toISOString()
+    }
+  });
 });
 
 // Legal pages (for Meta app compliance)
