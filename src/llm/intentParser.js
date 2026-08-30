@@ -88,8 +88,10 @@ function buildSystemPrompt(language, { hasMedia = false } = {}) {
   const mediaNote = hasMedia
     ? '\n\nIMPORTANT: a photo or video is attached to this request. That file IS ' +
       'the content to be delivered, so "message_body" may be null and its absence ' +
-      'is NOT a problem — never report it as missing, and never lower confidence ' +
-      'for it. Any text present is the caption, which is optional.\n'
+      'is NOT a problem — never report it as missing, never lower confidence ' +
+      'for it, and do not mention its absence in confirmation_text. Any text ' +
+      'present is the caption, which is optional. Refer to what is being sent ' +
+      'as the photo or video, not as a message with no text.\n'
     : '';
 
   const nowUtc = new Date();

@@ -113,11 +113,14 @@ async function sendMessage(message) {
     }
 
     console.log(`   ${recipient_phone} is outside the 24h window — using template`);
+    // A media-only message has no text, and the template needs both slots
+    // filled — an empty parameter is rejected outright.
+    const body = message_body || 'נשלח אליך קובץ. אפשר להשיב כאן כדי לקבל אותו.';
     return await sendTemplateMessage(
       recipient_phone,
       TEMPLATE_NAME,
       TEMPLATE_LANGUAGE,
-      [recipient_name || 'שלום', message_body]
+      [recipient_name || 'שלום', body]
     );
   } else if (channel === 'email') {
     // TODO: Implement email sending via Resend

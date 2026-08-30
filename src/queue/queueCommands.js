@@ -27,7 +27,7 @@ export function parseQueueCommand(text) {
 export async function getPendingEntries(userId) {
   const result = await pool.query(
     `SELECT queue_id, recipient_phone, recipient_name, message_body,
-            scheduled_at, status, group_id, media_id
+            scheduled_at, status, group_id, media_id, media_type
        FROM active_queue
       WHERE user_id = $1 AND status IN ('pending', 'awaiting_consent')
       ORDER BY scheduled_at ASC, queue_id ASC`,
@@ -54,7 +54,8 @@ export async function getPendingEntries(userId) {
         awaiting: row.status === 'awaiting_consent' ? 1 : 0,
         scheduledAt: row.scheduled_at,
         messageBody: row.message_body,
-        mediaId: row.media_id
+        mediaId: row.media_id,
+        mediaType: row.media_type
       };
       groupIndex.set(key, entry);
       entries.push(entry);
@@ -70,7 +71,8 @@ export async function getPendingEntries(userId) {
       awaiting: row.status === 'awaiting_consent' ? 1 : 0,
       scheduledAt: row.scheduled_at,
       messageBody: row.message_body,
-      mediaId: row.media_id
+      mediaId: row.media_id,
+      mediaType: row.media_type
     });
   }
 
@@ -89,12 +91,20 @@ async function groupName(groupId) {
   return result.rows[0]?.name || 'קבוצה';
 }
 
+const MEDIA_LABEL = { image: 'תמונה', video: 'סרטון', audio: 'הקלטה' };
+
+function describeContent(entry) {
+  if (!entry.mediaId) return `"${entry.messageBody}"`;
+  const label = MEDIA_LABEL[entry.mediaType] || 'קובץ';
+  return entry.messageBody ? `${label} + "${entry.messageBody}"` : label;
+}
+
 async function describeEntry(entry) {
   const who = entry.groupId
     ? `לקבוצת ${await groupName(entry.groupId)} (${entry.recipientCount} אנשים)`
     : `ל${entry.recipientName || entry.recipientPhone}${entry.recipientName ? ` ${entry.recipientPhone}` : ''}`;
 
-  const what = entry.mediaId ? 'הקלטה' : `"${entry.messageBody}"`;
+  const what = describeContent(entry);
   const waiting = entry.awaiting > 0
     ? (entry.groupId ? ` — ${entry.awaiting} עדיין לא אישרו` : ' — ממתין לאישור הנמען')
     : '';
