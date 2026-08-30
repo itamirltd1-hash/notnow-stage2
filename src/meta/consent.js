@@ -9,8 +9,11 @@ const TEMPLATE_LANGUAGE = process.env.META_TEMPLATE_LANGUAGE || 'he';
 
 // The words always count: "הסר" and "stop" are the opt-out keywords people
 // already expect, and dropping them would break a convention Meta relies on.
-const AGREE = /^\s*(כן|מאשר|מאשרת|אישור|אוקיי|אוקי|בסדר|yes|y|ok|start)\s*[!.]?\s*$/i;
-const REFUSE = /^\s*(לא|הסר|הסירו|תסיר|בטל|הפסק|די|stop|unsubscribe|no)\s*[!.]?\s*$/i;
+// People answer a yes/no question with whatever word comes to mind. Missing
+// one does not merely fail to register consent — the reply falls through to
+// the new-user path and greets a recipient with a product tour.
+const AGREE = /^\s*(כן|קבל|קבלי|מקבל|מקבלת|לקבל|מאשר|מאשרת|אשמח|אישור|מסכים|מסכימה|סבבה|בטח|טוב|אין\s+בעיה|אוקיי|אוקי|בסדר|yes|y|ok|okay|sure|accept|start)\s*[!.]?\s*$/i;
+const REFUSE = /^\s*(לא|הסר|הסירו|תסיר|תסירו|הסירי|בטל|בטלו|הפסק|הפסיקו|די|מסרב|מסרבת|לא\s+מעוניין|לא\s+מעוניינת|stop|unsubscribe|remove|no|decline)\s*[!.]?\s*$/i;
 
 // A bare letter only answers a consent question that is actually open. A
 // tenant whose own contact row is already 'granted' answers letters to the

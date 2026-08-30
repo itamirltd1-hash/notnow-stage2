@@ -227,4 +227,24 @@ export async function isPendingRecipient(phone) {
   return result.rowCount > 0;
 }
 
+/**
+ * Someone who receives messages through this service on another person's
+ * behalf, whatever they answered.
+ *
+ * They arrived because a friend scheduled something, not because they came
+ * looking for a scheduling product — so an unrecognised reply from them
+ * should not be answered with a tour of features they never asked about.
+ */
+export async function isKnownRecipient(phone) {
+  const normalized = normalizePhoneNumber(phone);
+  const result = await pool.query(
+    `SELECT 1 FROM contacts
+      WHERE phone_number = $1 AND is_owner = FALSE
+        AND consent_status IN ('requested', 'granted', 'declined')
+      LIMIT 1`,
+    [normalized]
+  );
+  return result.rowCount > 0;
+}
+
 export { listGroups };

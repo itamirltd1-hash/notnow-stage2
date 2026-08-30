@@ -15,9 +15,9 @@ import {
 } from '../meta/pendingMedia.js';
 import {
   parseGroupCommand, runGroupCommand, looksLikeGroupCommand,
-  isPendingRecipient, SYNTAX_HELP
+  isPendingRecipient, isKnownRecipient, SYNTAX_HELP
 } from '../groups/groupCommands.js';
-import { isGreeting, isHelpRequest, welcomeMessage, helpMessage, consentClarification } from '../meta/welcome.js';
+import { isGreeting, isHelpRequest, welcomeMessage, helpMessage, consentClarification, recipientGreeting } from '../meta/welcome.js';
 import { parseNameCommand, runNameCommand, rememberProfileName, getDisplayName } from '../auth/displayName.js';
 import { parseQueueCommand, runQueueCommand } from '../queue/queueCommands.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
@@ -144,9 +144,15 @@ router.post('/webhook', async (req, res) => {
     // A first message, a greeting or a request for help are all answered from
     // static text — no model call, no "לא הבנתי" as an opening impression.
     if (type === 'text' && (isNewUser || isGreeting(text))) {
+      // Someone who is here because a friend scheduled something for them
+      // gets context, not a tour of a product they did not come looking for.
+      const asRecipient = await isKnownRecipient(phone);
+
       await sendWhatsAppMessage(
         phone,
-        isNewUser ? welcomeMessage(profileName) : helpMessage()
+        asRecipient ? recipientGreeting()
+          : isNewUser ? welcomeMessage(profileName)
+          : helpMessage()
       );
       return;
     }

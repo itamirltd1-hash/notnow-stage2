@@ -67,6 +67,21 @@ export function helpMessage() {
 }
 
 /**
+ * For someone who reached the bot only because a friend scheduled something
+ * for them. A tour of scheduling features answers a question they never
+ * asked — but they should still learn how to stop, and how to start if they
+ * do want it.
+ */
+export function recipientGreeting() {
+  return (
+    'שלום! אני Cue.\n' +
+    'מישהו תזמן עבורך הודעה דרכי, ולכן אנחנו בקשר.\n\n' +
+    'להפסקת הודעות ממני — להשיב "הסר".\n\n' +
+    'ואם בא לך גם לתזמן הודעות בעצמך, אפשר לכתוב "עזרה" ואסביר.'
+  );
+}
+
+/**
  * For a recipient who was asked for consent and replied with something else.
  * They are mid-conversation about one specific question — a product tour here
  * would answer a question they never asked.
