@@ -35,6 +35,7 @@ import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddlewar
 import { isExempt } from '../billing/exemptions.js';
 import { isQuotaQuestion, describeQuota, quotaWarningLine } from '../billing/quotaCommands.js';
 import { answerServiceQuestion } from '../meta/faq.js';
+import { answerProductQuestion } from '../llm/answerQuestion.js';
 import { downloadMedia } from '../meta/mediaDownload.js';
 import { transcribeAudio, isTranscriptionAvailable } from '../llm/transcriber.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
@@ -337,8 +338,12 @@ router.post('/webhook', async (req, res) => {
         && Boolean(e.scheduled_timestamp))
       || (Boolean(pending?.is_fresh) && isComplete(e, hasMedia));
 
+    // A question changes nothing, so there is no risk in answering an uncertain
+    // one — and the answer is grounded in the product description regardless.
+    const isQuestion = intentResult.intent === 'PRODUCT_QUESTION';
+
     const tooUncertain =
-      (intentResult.confidence ?? 0) < MIN_CONFIDENCE && !requestIsComplete;
+      (intentResult.confidence ?? 0) < MIN_CONFIDENCE && !requestIsComplete && !isQuestion;
 
     if (requestIsComplete && (intentResult.confidence ?? 0) < MIN_CONFIDENCE) {
       console.log('   Acting anyway: file, recipient and time are all present');
@@ -401,6 +406,14 @@ router.post('/webhook', async (req, res) => {
       case 'LIST_QUEUE':
         await sendWhatsAppMessage(phone, await runQueueCommand(req.userId, { action: 'list' }));
         break;
+
+      case 'PRODUCT_QUESTION': {
+        // Grounded in what the service actually does, rather than in whatever
+        // the scheduling model imagines about it.
+        const answer = await answerProductQuestion(text);
+        await sendWhatsAppMessage(phone, answer || helpMessage());
+        break;
+      }
 
       case 'UPGRADE_TIER':
         // TODO: Cycle 4 feature
