@@ -198,7 +198,7 @@ export async function runGroupCommand(userId, command) {
       const name = c || 'איש קשר';
       await addGroupMember(userId, match.group_id, phone, name);
       const members = await getGroupMembers(userId, match.group_id);
-      return `${name} ${phone} נוסף לקבוצה "${match.name}". יש בה עכשיו ${members.length}.`;
+      return `הוספתי את ${name} ${phone} לקבוצה "${match.name}". יש בה עכשיו ${members.length}.`;
     }
 
     case 'members': {
@@ -213,7 +213,10 @@ export async function runGroupCommand(userId, command) {
       const members = await getGroupMembers(userId, match.group_id);
       if (members.length === 0) return `אין עדיין אף אחד בקבוצה "${match.name}".`;
 
-      const label = { granted: 'אישר', declined: 'סירב', requested: 'ממתין לאישור', unknown: 'טרם נשאל' };
+      const label = {
+        granted: 'מאושר', declined: 'סורב',
+        requested: 'ממתין לאישור', unknown: 'טרם נשלחה בקשה'
+      };
       return `בקבוצה "${match.name}" יש ${members.length}:\n` +
         members.map(m => `• ${m.name} ${m.phone_number} — ${label[m.consent_status] || ''}`).join('\n');
     }
@@ -249,7 +252,7 @@ export async function runGroupCommand(userId, command) {
       }
 
       await removeGroupMember(userId, match.group_id, target[0].contact_id);
-      return `${target[0].name} ${target[0].phone_number} הוסר מהקבוצה "${match.name}".`;
+      return `הסרתי את ${target[0].name} ${target[0].phone_number} מהקבוצה "${match.name}".`;
     }
 
     default:

@@ -106,7 +106,7 @@ async function describeEntry(entry) {
 
   const what = describeContent(entry);
   const waiting = entry.awaiting > 0
-    ? (entry.groupId ? ` — ${entry.awaiting} עדיין לא אישרו` : ' — ממתין לאישור הנמען')
+    ? (entry.groupId ? ` — ${entry.awaiting} עדיין לא אישרו` : ' — ממתינה לאישור הנמען')
     : '';
 
   return `${who} — ${formatWhen(entry.scheduledAt)} — ${what}${waiting}`;

@@ -547,7 +547,7 @@ async function handleChoice(userId, senderPhone, choice) {
       await sendWhatsAppMessage(
         senderPhone,
         removed
-          ? `${option.name} (${option.phone}) הוסר מ"${payload.groupName}".`
+          ? `הסרתי את ${option.name} (${option.phone}) מ"${payload.groupName}".`
           : `לא הצלחתי להסיר את ${option.name}.`
       );
       return;
@@ -980,7 +980,14 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
   }
 }
 
-const MEDIA_WORD = { image: 'התמונה', video: 'הסרטון', audio: 'ההקלטה' };
+// A Hebrew verb agrees with the gender of its subject, so each noun carries
+// its own. One shared verb is how "הסרטון תישלח" happens.
+const MEDIA_SUBJECT = {
+  image:    { noun: 'התמונה', verb: 'תישלח' },
+  video:    { noun: 'הסרטון', verb: 'יישלח' },
+  audio:    { noun: 'ההקלטה', verb: 'תישלח' },
+  document: { noun: 'המסמך',  verb: 'יישלח' }
+};
 
 /**
  * Name the file and when it goes. Nothing here is a guess, so nothing here
@@ -996,10 +1003,11 @@ function mediaConfirmation({ mediaType, scheduledAt, recipients, group }) {
     ? `לקבוצת ${group.name}`
     : `ל${recipients[0]?.name || recipients[0]?.phone || 'נמען'}`;
 
-  if (!mediaType) return `קיבלתי. ההודעה תישלח ${who} ב-${when}.`;
+  const subject = mediaType
+    ? (MEDIA_SUBJECT[mediaType] || { noun: 'הקובץ', verb: 'יישלח' })
+    : { noun: 'ההודעה', verb: 'תישלח' };
 
-  const what = MEDIA_WORD[mediaType] || 'הקובץ';
-  return `קיבלתי. ${what} תישלח ${who} ב-${when}.`;
+  return `קיבלתי. ${subject.noun} ${subject.verb} ${who} ב-${when}.`;
 }
 
 /**
