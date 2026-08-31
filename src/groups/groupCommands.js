@@ -101,6 +101,52 @@ export function looksLikeGroupCommand(text) {
   return text.split('\n').some(line => MANAGEMENT_VERB.test(line));
 }
 
+// "קבוצת <שם>" names one group; the plural on its own means the collection.
+// That distinction, rather than a list of phrasings, is what separates
+// "תשלח לקבוצת צוות מחר" from "כמה קבוצות יש לי".
+const NAMES_A_GROUP = /קבוצ(?:ת|ה)\s+\S/;
+const ASKS_ABOUT_GROUPS = /קבוצ/;
+const LISTING_WORD =
+  /אילו|איזה|איזו|כמה|מה\s|מהן|מהם|יש\s+לי|תראה|תראי|הראה|הצג|תציג|רשימ|כל\s+ה/;
+
+/**
+ * Is this a question about which groups exist, rather than about one of them?
+ */
+export function isGroupsListQuestion(text) {
+  const t = text.trim();
+
+  // Bare "קבוצות" / "קבוצה" / "הקבוצות שלי".
+  if (/^(?:ה)?(?:קבוצות|קבוצה)(?:\s+שלי)?\s*[?？.]?$/.test(t)) return true;
+  if (/^groups\s*[?？.]?$/i.test(t)) return true;
+
+  if (!ASKS_ABOUT_GROUPS.test(t)) return false;
+  if (NAMES_A_GROUP.test(t)) return false;      // asking about one group
+  if (MANAGEMENT_VERB.test(t)) return false;    // creating or changing one
+
+  return LISTING_WORD.test(t);
+}
+
+/**
+ * Answer both "which groups" and "how many" in one line, since people ask it
+ * either way and both want the same picture.
+ */
+export async function describeGroups(userId) {
+  const groups = await listGroups(userId);
+
+  if (groups.length === 0) {
+    return 'אין לך קבוצות שמורות. ליצירה: צור קבוצה טסטרים';
+  }
+
+  const count = groups.length === 1 ? 'קבוצה אחת' : `${groups.length} קבוצות`;
+  const lines = groups.map(g => {
+    const n = Number(g.member_count);
+    const members = n === 0 ? 'ריקה' : n === 1 ? 'איש אחד' : `${n} אנשים`;
+    return `• ${g.name} — ${members}`;
+  });
+
+  return `יש לך ${count}:\n${lines.join('\n')}`;
+}
+
 export const SYNTAX_HELP =
   'פקודות קבוצות:\n' +
   '• צור קבוצה טסטרים\n' +

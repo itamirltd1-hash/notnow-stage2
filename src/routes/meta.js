@@ -18,7 +18,8 @@ import {
 } from '../meta/pendingMedia.js';
 import {
   parseGroupCommand, runGroupCommand, looksLikeGroupCommand,
-  isPendingRecipient, isKnownRecipient, SYNTAX_HELP
+  isPendingRecipient, isKnownRecipient, isGroupsListQuestion, describeGroups,
+  SYNTAX_HELP
 } from '../groups/groupCommands.js';
 import { isGreeting, isHelpRequest, welcomeMessage, helpMessage, consentClarification, recipientGreeting } from '../meta/welcome.js';
 import { parseNameCommand, runNameCommand, rememberProfileName, getDisplayName } from '../auth/displayName.js';
@@ -27,6 +28,9 @@ import {
   storePendingRequest, peekPendingRequest, clearPendingRequest,
   mergeEntities, isComplete, isAbandonment, EXPIRED_NOTICE
 } from '../scheduling/pendingRequest.js';
+import {
+  detectAmbiguousHour, recallHour, rememberHour, withHour, formatHour
+} from '../scheduling/ambiguousHour.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
 import { isExempt } from '../billing/exemptions.js';
 import { isQuotaQuestion, describeQuota, quotaWarningLine } from '../billing/quotaCommands.js';
@@ -273,16 +277,10 @@ router.post('/webhook', async (req, res) => {
     // The voice delivery question is answered by a letter now, through the
     // same pending_choice path as every other question, above.
 
-    // A bare "קבוצות" is a lookup, not a scheduling request — answering it
-    // directly avoids spending a model call on it.
-    if (/^\s*(?:ה)?(?:קבוצות|קבוצה|רשימת\s+(?:ה)?קבוצות|groups)\s*[?？]?\s*$/i.test(text)) {
-      const groups = await listGroups(req.userId);
-      await sendWhatsAppMessage(
-        phone,
-        groups.length === 0
-          ? 'אין לך קבוצות שמורות עדיין.'
-          : 'הקבוצות שלך:\n' + groups.map(g => `• ${g.name} (${g.member_count})`).join('\n')
-      );
+    // "אילו קבוצות יש לי", "כמה קבוצות יש לי", or just "קבוצות" — a lookup,
+    // not a scheduling request, and answered without a model call.
+    if (type === 'text' && isGroupsListQuestion(text)) {
+      await sendWhatsAppMessage(phone, await describeGroups(req.userId));
       return;
     }
 
@@ -364,15 +362,35 @@ router.post('/webhook', async (req, res) => {
 
     // Handle different intents
     switch (intent) {
-      case 'SCHEDULE_MESSAGE':
-        // "על הבוקר" is a range, not a time. Guessing one and being wrong is
-        // worse than a single short question, so ask which they meant.
-        if (intentResult.timeIsVague && intentResult.timeOptions?.length === 2) {
+      case 'SCHEDULE_MESSAGE': {
+        // "מחר ב-8" is eight in the morning to some people and eight in the
+        // evening to others; guessing wrong sends the message twelve hours off.
+        const ambiguous = entities.scheduled_timestamp
+          ? detectAmbiguousHour(text)
+          : null;
+
+        if (ambiguous) {
+          const learned = await recallHour(req.userId, ambiguous.hour);
+
+          if (learned !== null) {
+            // Already answered once for this hour. The confirmation states the
+            // time, so a wrong guess is visible immediately.
+            entities.scheduled_timestamp =
+              withHour(entities.scheduled_timestamp, learned, ambiguous.minutes);
+            console.log(`   ${ambiguous.hour} → ${learned}:00 from this user's earlier answer`);
+          } else {
+            await askWhichHour(req.userId, phone, entities, confirmationText, ambiguous);
+            break;
+          }
+        } else if (intentResult.timeIsVague && intentResult.timeOptions?.length === 2) {
+          // "על הבוקר" is a range rather than a time.
           await askWhichTime(req.userId, phone, entities, confirmationText, intentResult.timeOptions);
           break;
         }
+
         await handleScheduleMessage(req.userId, phone, entities, confirmationText);
         break;
+      }
 
       // Phrased loosely enough that the patterns missed it — show the queue
       // and let the sender pick a number rather than guessing which to cancel.
@@ -397,6 +415,32 @@ router.post('/webhook', async (req, res) => {
     console.error('❌ Error processing webhook:', error.message, error.stack);
   }
 });
+
+/**
+ * Ask whether a bare hour meant morning or evening, and remember the answer.
+ *
+ * Numbered rather than lettered because the two options are clock times, and
+ * a numbered list is what people answer with a digit.
+ */
+async function askWhichHour(userId, senderPhone, entities, confirmationText, ambiguous) {
+  const { hour, minutes, morning, evening } = ambiguous;
+
+  await storeChoice(userId, senderPhone, 'schedule_hour', {
+    allowDigits: true,
+    statedHour: hour,
+    minutes,
+    options: [{ resolvedHour: morning }, { resolvedHour: evening }],
+    entities,
+    confirmationText
+  });
+
+  await sendWhatsAppMessage(
+    senderPhone,
+    `${formatHour(hour, minutes)} בבוקר או בערב?\n` +
+    `1. ${formatHour(morning, minutes)}\n` +
+    `2. ${formatHour(evening, minutes)}`
+  );
+}
 
 /**
  * Ask which clock time a vague phrase meant, offering the two the model
@@ -464,6 +508,18 @@ async function handleChoice(userId, senderPhone, choice) {
 
     case 'cancel_queue': {
       await sendWhatsAppMessage(senderPhone, await cancelChosenEntry(userId, option.queueIds));
+      return;
+    }
+
+    case 'schedule_hour': {
+      const entities = {
+        ...payload.entities,
+        scheduled_timestamp: withHour(
+          payload.entities.scheduled_timestamp, option.resolvedHour, payload.minutes || 0
+        )
+      };
+      await rememberHour(userId, payload.statedHour, option.resolvedHour);
+      await handleScheduleMessage(userId, senderPhone, entities, payload.confirmationText);
       return;
     }
 
