@@ -22,7 +22,7 @@ import {
 } from '../groups/groupCommands.js';
 import { isGreeting, isHelpRequest, welcomeMessage, helpMessage, consentClarification, recipientGreeting } from '../meta/welcome.js';
 import { parseNameCommand, runNameCommand, rememberProfileName, getDisplayName } from '../auth/displayName.js';
-import { parseQueueCommand, runQueueCommand } from '../queue/queueCommands.js';
+import { parseQueueCommand, runQueueCommand, cancelChosenEntry } from '../queue/queueCommands.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
 import { isExempt } from '../billing/exemptions.js';
 import { isQuotaQuestion, describeQuota, quotaWarningLine } from '../billing/quotaCommands.js';
@@ -209,7 +209,13 @@ router.post('/webhook', async (req, res) => {
     if (type === 'text') {
       const queueCommand = parseQueueCommand(text);
       if (queueCommand) {
-        await sendWhatsAppMessage(phone, await runQueueCommand(req.userId, queueCommand));
+        const result = await runQueueCommand(req.userId, queueCommand);
+        if (typeof result === 'object') {
+          await storeChoice(req.userId, phone, result.choice.kind, result.choice.payload);
+          await sendWhatsAppMessage(phone, result.reply);
+        } else {
+          await sendWhatsAppMessage(phone, result);
+        }
         return;
       }
     }
@@ -265,7 +271,7 @@ router.post('/webhook', async (req, res) => {
 
     // A bare "קבוצות" is a lookup, not a scheduling request — answering it
     // directly avoids spending a model call on it.
-    if (/^\s*(קבוצות|groups)\s*$/i.test(text)) {
+    if (/^\s*(?:ה)?(?:קבוצות|קבוצה|רשימת\s+(?:ה)?קבוצות|groups)\s*[?？]?\s*$/i.test(text)) {
       const groups = await listGroups(req.userId);
       await sendWhatsAppMessage(
         phone,
@@ -420,6 +426,11 @@ async function handleChoice(userId, senderPhone, choice) {
           ? `${option.name} (${option.phone}) הוסר מ"${payload.groupName}".`
           : `לא הצלחתי להסיר את ${option.name}.`
       );
+      return;
+    }
+
+    case 'cancel_queue': {
+      await sendWhatsAppMessage(senderPhone, await cancelChosenEntry(userId, option.queueIds));
       return;
     }
 

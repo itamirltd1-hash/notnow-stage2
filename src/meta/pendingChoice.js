@@ -13,14 +13,22 @@ const TTL_MINUTES = 30;
  * Deliberately not accepting digits: those already address the queue
  * ("בטל 2"), and a bare number would be ambiguous between the two.
  */
-export function letterToIndex(text) {
+export function letterToIndex(text, { allowDigits = false } = {}) {
   const trimmed = text.trim().replace(/[.'"׳!]/g, '').toLowerCase();
   if (trimmed.length !== 1) return -1;
 
   const hebrew = LETTERS.indexOf(trimmed);
   if (hebrew !== -1) return hebrew;
 
-  return LATIN.indexOf(trimmed);
+  const latin = LATIN.indexOf(trimmed);
+  if (latin !== -1) return latin;
+
+  // Only where the question itself was numbered. A bare digit is ambiguous in
+  // general — "2" could mean the second option or the second queued message —
+  // but not when the list on screen is the numbered one being answered.
+  if (allowDigits && /^[1-9]$/.test(trimmed)) return Number(trimmed) - 1;
+
+  return -1;
 }
 
 export function letterFor(index) {
@@ -57,8 +65,9 @@ export async function storeChoice(userId, senderPhone, kind, payload) {
  * a letter. Returns { kind, payload, option, index } or null.
  */
 export async function resolveChoice(senderPhone, text) {
-  const index = letterToIndex(text);
-  if (index === -1) return null;
+  // Whether a digit counts depends on how the question was asked, so the
+  // stored question has to be read before the answer can be interpreted.
+  if (letterToIndex(text, { allowDigits: true }) === -1) return null;
 
   const phone = normalizePhoneNumber(senderPhone);
 
@@ -74,6 +83,9 @@ export async function resolveChoice(senderPhone, text) {
 
   const row = result.rows[0];
   const options = row.payload.options || [];
+
+  const index = letterToIndex(text, { allowDigits: row.payload.allowDigits === true });
+  if (index === -1) return null;
 
   if (index >= options.length) {
     return { kind: 'out_of_range', optionCount: options.length };

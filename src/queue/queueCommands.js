@@ -126,7 +126,18 @@ export async function runQueueCommand(userId, command) {
 
   if (command.target === null) {
     const lines = await Promise.all(entries.map(async (e, i) => `${i + 1}. ${await describeEntry(e)}`));
-    return `איזו מהן לבטל?\n${lines.join('\n')}\n\nלמשל "בטל 1", או "בטל הכל".`;
+    // The list is numbered, so a bare number is the natural answer. Returned
+    // as a question the caller can park, rather than plain text.
+    return {
+      reply: `איזו מהן לבטל?\n${lines.join('\n')}\n\nאפשר להשיב במספר, או "בטל הכל".`,
+      choice: {
+        kind: 'cancel_queue',
+        payload: {
+          allowDigits: true,
+          options: entries.map(e => ({ queueIds: e.queueIds }))
+        }
+      }
+    };
   }
 
   if (command.target === 'all') {
@@ -149,6 +160,14 @@ export async function runQueueCommand(userId, command) {
  * Scoped by user_id as well as id — an index is easy to guess, and cancelling
  * must never reach another tenant's queue.
  */
+/**
+ * Cancel the entry a number picked out of the list shown a moment ago.
+ */
+export async function cancelChosenEntry(userId, queueIds) {
+  await cancelIds(userId, queueIds);
+  return `ביטלתי.`;
+}
+
 async function cancelIds(userId, queueIds) {
   await pool.query(
     `UPDATE active_queue
