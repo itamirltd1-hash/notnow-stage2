@@ -105,7 +105,14 @@ export async function handleConsentReply(phone, text) {
   );
   const questionIsOpen = asked.rowCount > 0;
 
-  const agreed = AGREE.test(text) || (questionIsOpen && LETTER_YES.test(text));
+  // Agreeing only means consent while a consent question is actually open.
+  // Re-granting consent already given says nothing, and "מאשר" is what people
+  // type to accept the terms of service — swallowing it here answered the
+  // wrong question entirely.
+  const agreed = questionIsOpen && (AGREE.test(text) || LETTER_YES.test(text));
+
+  // Refusal needs no open question: someone must be able to opt out at any
+  // time, including long after they agreed.
   const refused = REFUSE.test(text) || (questionIsOpen && LETTER_NO.test(text));
 
   if (!agreed && !refused) {

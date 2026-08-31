@@ -182,6 +182,18 @@ router.post('/webhook', async (req, res) => {
 
     if (type === 'text' && isTermsAcceptance(text) && !(await hasAcceptedTerms(req.userId))) {
       await recordAcceptance(req.userId);
+
+      // Carry on with whatever they were trying to schedule when the terms
+      // interrupted, rather than making them start over.
+      const held = await peekPendingRequest(phone);
+      if (held?.is_fresh && isComplete(held.entities, Boolean(held.media_id))) {
+        await clearPendingRequest(phone);
+        await handleScheduleMessage(
+          req.userId, phone, held.entities, null, held.media_id, held.media_type
+        );
+        return;
+      }
+
       await sendWhatsAppMessage(phone, acceptanceConfirmation());
       return;
     }
@@ -717,6 +729,9 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
     // it waits for agreement. Everything else, including asking for help or
     // to be removed, stays available.
     if (!(await hasAcceptedTerms(userId))) {
+      // Hold the request across the interruption. Being asked to agree to
+      // terms is no reason to have to type the whole thing again.
+      await storePendingRequest(userId, senderPhone, entities, mediaId, mediaType);
       await sendWhatsAppMessage(senderPhone, termsPrompt());
       return;
     }
@@ -901,7 +916,6 @@ const MEDIA_WORD = { image: 'התמונה', video: 'הסרטון', audio: 'הה�
  * needs a model to phrase it.
  */
 function mediaConfirmation({ mediaType, scheduledAt, recipients, group }) {
-  const what = MEDIA_WORD[mediaType] || 'הקובץ';
   const when = new Date(scheduledAt).toLocaleString('he-IL', {
     timeZone: 'Asia/Jerusalem',
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
@@ -911,6 +925,9 @@ function mediaConfirmation({ mediaType, scheduledAt, recipients, group }) {
     ? `לקבוצת ${group.name}`
     : `ל${recipients[0]?.name || recipients[0]?.phone || 'נמען'}`;
 
+  if (!mediaType) return `קיבלתי. ההודעה תישלח ${who} ב-${when}.`;
+
+  const what = MEDIA_WORD[mediaType] || 'הקובץ';
   return `קיבלתי. ${what} תישלח ${who} ב-${when}.`;
 }
 
@@ -925,9 +942,12 @@ function buildScheduleConfirmation({
   // When a file is attached the model keeps apologising for the message text
   // it thinks is missing, twice now despite being told not to. This sentence
   // has to be exact, so it is written here rather than asked for.
+  // The model's wording is used when there is one. A request resumed after an
+  // interruption has none, so the sentence is written here instead of sent
+  // empty.
   const headline = mediaType
     ? mediaConfirmation({ mediaType, scheduledAt, recipients, group })
-    : confirmationText;
+    : (confirmationText || mediaConfirmation({ mediaType: null, scheduledAt, recipients, group }));
 
   if (!group && awaitingConsent.length === 0 && declined.length === 0) {
     return headline;
