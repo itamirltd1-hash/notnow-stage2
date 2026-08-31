@@ -272,15 +272,31 @@ router.post('/webhook', async (req, res) => {
       }
     }
 
-    // A photo or video is held aside. If it arrived with a caption saying what
-    // to do, that caption continues as the message; otherwise the sender is
-    // told the file is waiting for an instruction.
-    if (type === 'image' || type === 'video') {
-      await storePendingMedia(req.userId, phone, mediaId, type, text);
+    // A shared contact card is a recipient, not an attachment. Reading it
+    // saves the sender from typing a number they already have on their phone.
+    if (type === 'contacts') {
+      await handleSharedContact(req.userId, phone, messageData.contact);
+      return;
+    }
+
+    // Anything the service cannot schedule is said out loud. Silence here
+    // reads as a fault, and it is how a shared contact card was lost before.
+    if (messageData.unsupported) {
+      await sendWhatsAppMessage(phone, unsupportedTypeReply(messageData.unsupported));
+      return;
+    }
+
+    // A photo, video or document is held aside. If it arrived with a caption
+    // saying what to do, that caption continues as the message; otherwise the
+    // sender is told the file is waiting for an instruction.
+    if (type === 'image' || type === 'video' || type === 'document') {
+      await storePendingMedia(req.userId, phone, mediaId, type, text, messageData.filename);
       if (!text) {
+        const what = type === 'image' ? 'התמונה' : type === 'video' ? 'הסרטון'
+          : messageData.filename ? `הקובץ ${messageData.filename}` : 'המסמך';
         await sendWhatsAppMessage(
           phone,
-          `קיבלתי את ה${type === 'image' ? 'תמונה' : 'סרטון'}. למי ומתי לשלוח אותו?\n` +
+          `קיבלתי את ${what}. למי ומתי לשלוח?\n` +
           `למשל: תשלח את זה לדני 0501234567 מחר ב-9:00`
         );
         return;
@@ -572,6 +588,54 @@ async function handleChoice(userId, senderPhone, choice) {
   }
 }
 
+const UNSUPPORTED_REPLY = {
+  sticker: 'מדבקות לא ניתנות לתזמון. אפשר לשלוח טקסט, תמונה, סרטון, מסמך או הקלטה קולית.',
+  location: 'אני לא יודע לתזמן לפי מיקום. אפשר לתזמן לפי שעה — למשל "שלח לדני מחר ב-9:00".',
+  order: 'הזמנות אינן נתמכות. אפשר לתזמן טקסט, תמונה, סרטון, מסמך או הקלטה קולית.',
+  system: null
+};
+
+function unsupportedTypeReply(kind) {
+  return UNSUPPORTED_REPLY[kind]
+    || 'אני יודע לתזמן טקסט, תמונות, סרטונים, מסמכים והקלטות קוליות. את זה לא.';
+}
+
+/**
+ * Read a shared contact card as a recipient.
+ *
+ * People name someone by forwarding their card rather than typing a number,
+ * and this used to be ignored entirely. The card fills the recipient, and the
+ * open-request mechanism collects the rest.
+ */
+async function handleSharedContact(userId, senderPhone, contact) {
+  const phone = normalizePhoneNumber(contact?.phone);
+
+  if (!phone) {
+    await sendWhatsAppMessage(
+      senderPhone,
+      'קיבלתי כרטיס איש קשר אבל בלי מספר טלפון. אפשר לכתוב את המספר?'
+    );
+    return;
+  }
+
+  const name = contact.name || null;
+  await registerOrUpdateContact(userId, phone, name);
+
+  await storePendingRequest(userId, senderPhone, {
+    recipient_phone: phone,
+    recipient_name: name,
+    recipient_group: null,
+    message_body: null,
+    scheduled_timestamp: null,
+    delivery_channel: 'whatsapp'
+  });
+
+  await sendWhatsAppMessage(
+    senderPhone,
+    `שמרתי את ${name || phone} (${phone}).\n\nמה לשלוח, ומתי?`
+  );
+}
+
 /**
  * Turn an incoming voice note into an actionable request.
  *
@@ -717,7 +781,7 @@ async function resolveRecipients(userId, entities) {
  * into an individual 1-on-1 message per member, each with its own queue row,
  * consent state and delivery status.
  */
-async function handleScheduleMessage(userId, senderPhone, entities, confirmationText, mediaId = null, mediaType = null) {
+async function handleScheduleMessage(userId, senderPhone, entities, confirmationText, mediaId = null, mediaType = null, mediaFilename = null) {
   try {
     const { message_body, scheduled_timestamp, delivery_channel } = entities;
     console.log('   Entities:', JSON.stringify(entities));
@@ -728,6 +792,7 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
       if (held) {
         mediaId = held.media_id;
         mediaType = held.media_type;
+        mediaFilename = held.filename;
       }
     }
 
@@ -847,13 +912,13 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
       const result = await userQuery(
         userId,
         `INSERT INTO active_queue
-         (user_id, recipient_phone, recipient_name, message_body, channel, scheduled_at, status, group_id, media_id, media_type)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         (user_id, recipient_phone, recipient_name, message_body, channel, scheduled_at, status, group_id, media_id, media_type, media_filename)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING queue_id`,
         [
           recipient.phone, recipient.name, message_body,
           delivery_channel || 'whatsapp', scheduled_timestamp, status,
-          group?.group_id || null, mediaId, mediaType
+          group?.group_id || null, mediaId, mediaType, mediaFilename
         ]
       );
 

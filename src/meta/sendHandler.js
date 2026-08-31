@@ -302,19 +302,21 @@ export async function sendAudioMessage(recipientPhone, mediaId) {
  * Like audio, media cannot travel inside the approved template, so this only
  * reaches someone inside the 24-hour service window.
  */
-export async function sendMediaMessage(recipientPhone, mediaId, mediaType, caption = null) {
+export async function sendMediaMessage(recipientPhone, mediaId, mediaType, caption = null, filename = null) {
   const apiToken = process.env.META_API_TOKEN;
   const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
 
   if (!apiToken || !phoneNumberId) {
     throw new Error('META_API_TOKEN or META_PHONE_NUMBER_ID not configured');
   }
-  if (mediaType !== 'image' && mediaType !== 'video') {
+  if (!['image', 'video', 'document'].includes(mediaType)) {
     throw new Error(`Unsupported media type: ${mediaType}`);
   }
 
   const payload = { id: mediaId };
   if (caption) payload.caption = caption.slice(0, 1024);
+  // Only documents carry a name, and it is what the recipient sees.
+  if (mediaType === 'document' && filename) payload.filename = filename;
 
   console.log(`🖼️  Sending ${mediaType} ${mediaId} to ${recipientPhone}`);
 

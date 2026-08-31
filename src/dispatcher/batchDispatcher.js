@@ -105,7 +105,7 @@ export async function dispatchPendingMessages() {
  * Returns success or throws error.
  */
 async function sendMessage(message) {
-  const { channel, recipient_phone, recipient_name, message_body, media_id, media_type } = message;
+  const { channel, recipient_phone, recipient_name, message_body, media_id, media_type, media_filename } = message;
 
   if (channel === 'whatsapp') {
     // Someone who asked to be erased stays erased, even if a message to them
@@ -124,8 +124,8 @@ async function sendMessage(message) {
       if (media_id) {
         // media_type was added later; rows from before it default to audio,
         // which is the only kind that existed then.
-        return media_type === 'image' || media_type === 'video'
-          ? await sendMediaMessage(recipient_phone, media_id, media_type, sign(message_body, signature))
+        return ['image', 'video', 'document'].includes(media_type)
+          ? await sendMediaMessage(recipient_phone, media_id, media_type, sign(message_body, signature), media_filename)
           : await sendAudioMessage(recipient_phone, media_id);
       }
       return await sendWhatsAppMessage(recipient_phone, sign(message_body, signature));

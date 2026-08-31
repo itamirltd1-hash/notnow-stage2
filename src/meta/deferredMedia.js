@@ -20,7 +20,7 @@ export async function deliverDeferredMedia(phone) {
   let rows;
   try {
     const result = await pool.query(
-      `SELECT queue_id, user_id, media_id, media_type, message_body
+      `SELECT queue_id, user_id, media_id, media_type, media_filename, message_body
          FROM active_queue
         WHERE recipient_phone = $1 AND media_deferred = TRUE AND media_id IS NOT NULL
         ORDER BY queue_id ASC
@@ -39,9 +39,9 @@ export async function deliverDeferredMedia(phone) {
 
   for (const row of rows) {
     try {
-      if (row.media_type === 'image' || row.media_type === 'video') {
+      if (['image', 'video', 'document'].includes(row.media_type)) {
         const signature = await senderSignature(row.user_id, normalized);
-        await sendMediaMessage(normalized, row.media_id, row.media_type, sign(row.message_body, signature));
+        await sendMediaMessage(normalized, row.media_id, row.media_type, sign(row.message_body, signature), row.media_filename);
       } else {
         await sendAudioMessage(normalized, row.media_id);
       }

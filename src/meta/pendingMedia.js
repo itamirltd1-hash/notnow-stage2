@@ -17,14 +17,14 @@ export const MAX_CAPTION = 1024;
  * Only the newest is kept: a second photo replaces the first, which is what
  * someone who sends two in a row means.
  */
-export async function storePendingMedia(userId, senderPhone, mediaId, mediaType, caption = null) {
+export async function storePendingMedia(userId, senderPhone, mediaId, mediaType, caption = null, filename = null) {
   const phone = normalizePhoneNumber(senderPhone);
 
   await pool.query('DELETE FROM pending_media WHERE sender_phone = $1', [phone]);
   await pool.query(
-    `INSERT INTO pending_media (user_id, sender_phone, media_id, media_type, caption)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [userId, phone, mediaId, mediaType, caption]
+    `INSERT INTO pending_media (user_id, sender_phone, media_id, media_type, caption, filename)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [userId, phone, mediaId, mediaType, caption, filename]
   );
 }
 

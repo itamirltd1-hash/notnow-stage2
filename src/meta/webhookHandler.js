@@ -76,17 +76,41 @@ export function extractMessageFromWebhook(body) {
       return { ...base, text: null, mediaId: message.audio?.id };
     }
 
-    // A photo or video may carry its instruction as a caption, or arrive bare
-    // with the instruction following in the next message.
-    if (message.type === 'image' || message.type === 'video') {
+    // A photo, video or document may carry its instruction as a caption, or
+    // arrive bare with the instruction following in the next message.
+    if (message.type === 'image' || message.type === 'video' || message.type === 'document') {
+      const payload = message[message.type] || {};
       return {
         ...base,
-        text: message[message.type]?.caption || null,
-        mediaId: message[message.type]?.id
+        text: payload.caption || null,
+        mediaId: payload.id,
+        // WhatsApp shows this to the recipient, and "document.pdf" is a worse
+        // thing to receive than the name the sender actually gave the file.
+        filename: payload.filename || null
       };
     }
 
-    return null;
+    // A shared contact card is how people name a recipient without typing a
+    // number — worth reading rather than ignoring.
+    if (message.type === 'contacts') {
+      const card = message.contacts?.[0];
+      return {
+        ...base,
+        text: null,
+        mediaId: null,
+        contact: {
+          name: card?.name?.formatted_name || card?.name?.first_name || null,
+          phone: card?.phones?.[0]?.phone || card?.phones?.[0]?.wa_id || null
+        }
+      };
+    }
+
+    // Everything else is recognised so the bot can say it cannot use it.
+    // Silence reads as a fault; a reaction is the one kind where silence is
+    // what a person expects.
+    if (message.type === 'reaction') return null;
+
+    return { ...base, text: null, mediaId: null, unsupported: message.type };
   } catch (error) {
     console.error('Error extracting message from webhook:', error.message);
     return null;

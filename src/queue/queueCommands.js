@@ -91,7 +91,7 @@ async function groupName(groupId) {
   return result.rows[0]?.name || 'קבוצה';
 }
 
-const MEDIA_LABEL = { image: 'תמונה', video: 'סרטון', audio: 'הקלטה' };
+const MEDIA_LABEL = { image: 'תמונה', video: 'סרטון', audio: 'הקלטה', document: 'מסמך' };
 
 function describeContent(entry) {
   if (!entry.mediaId) return `"${entry.messageBody}"`;
