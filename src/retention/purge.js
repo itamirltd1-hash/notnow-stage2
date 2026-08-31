@@ -43,7 +43,8 @@ export async function purgeExpiredData() {
     for (const [table, column] of [
       ['pending_choice', 'sender_phone'],
       ['pending_media', 'sender_phone'],
-      ['pending_voice', 'sender_phone']
+      ['pending_voice', 'sender_phone'],
+      ['pending_request', 'sender_phone']
     ]) {
       const result = await pool.query(
         `DELETE FROM ${table} WHERE created_at < NOW() - INTERVAL '${SCRATCH_HOURS} hours'

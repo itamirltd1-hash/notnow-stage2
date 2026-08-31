@@ -23,6 +23,10 @@ import {
 import { isGreeting, isHelpRequest, welcomeMessage, helpMessage, consentClarification, recipientGreeting } from '../meta/welcome.js';
 import { parseNameCommand, runNameCommand, rememberProfileName, getDisplayName } from '../auth/displayName.js';
 import { parseQueueCommand, runQueueCommand, cancelChosenEntry } from '../queue/queueCommands.js';
+import {
+  storePendingRequest, peekPendingRequest, clearPendingRequest,
+  mergeEntities, isComplete, isAbandonment, EXPIRED_NOTICE
+} from '../scheduling/pendingRequest.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
 import { isExempt } from '../billing/exemptions.js';
 import { isQuotaQuestion, describeQuota, quotaWarningLine } from '../billing/quotaCommands.js';
@@ -285,12 +289,37 @@ router.post('/webhook', async (req, res) => {
     // Detect language
     const language = detectLanguage(text);
 
+    // Someone walking away from a half-finished request should be able to say
+    // so, rather than having it merge into whatever they say next.
+    if (type === 'text' && isAbandonment(text)) {
+      await clearPendingRequest(phone);
+      await sendWhatsAppMessage(phone, 'בסדר, שכחתי מזה.');
+      return;
+    }
+
     // Parse intent using Claude Haiku. Tell it when a file is waiting, so it
     // does not treat the absent message text as something missing.
     const hasMedia = Boolean(mediaId) || Boolean(await peekPendingMedia(phone));
     console.log(`🧠 Parsing intent for: "${text}"${hasMedia ? ' (with media)' : ''}`);
     const intentResult = await parseSchedulingIntent(text, language, { hasMedia });
     console.log(`   Result:`, intentResult);
+
+    // This message may be the answer to a question the bot asked. Fold it into
+    // what was already understood, so "נתראה מחר ב-9" after "שלח לדן" is one
+    // request and not two incomplete ones.
+    const pending = type === 'text' ? await peekPendingRequest(phone) : null;
+
+    if (pending?.is_fresh) {
+      intentResult.entities = mergeEntities(pending.entities, intentResult.entities || {});
+      intentResult.intent = intentResult.intent || 'SCHEDULE_MESSAGE';
+      console.log('   Merged into the open request:', JSON.stringify(intentResult.entities));
+    } else if (pending && !isComplete(intentResult.entities || {}, hasMedia)) {
+      // The question is gone and this reply cannot stand on its own. Saying so
+      // beats asking them to repeat themselves for no visible reason.
+      await clearPendingRequest(phone);
+      await sendWhatsAppMessage(phone, EXPIRED_NOTICE);
+      return;
+    }
 
     // A low-confidence guess is a misunderstanding, not an instruction —
     // ask rather than act on it.
@@ -301,10 +330,14 @@ router.post('/webhook', async (req, res) => {
     // the empty message text, which is empty on purpose. Three attempts to
     // settle that in the prompt produced 0.75, 0.65 and 0.45 on the same
     // sentence, so it is settled here instead, against what we can verify.
+    // A merged request is judged the same way: by what it holds. The model
+    // scored only the last fragment, which on its own looks like nothing.
     const e = intentResult.entities || {};
-    const requestIsComplete = hasMedia
-      && Boolean(e.recipient_phone || e.recipient_name || e.recipient_group)
-      && Boolean(e.scheduled_timestamp);
+    const requestIsComplete =
+      (hasMedia
+        && Boolean(e.recipient_phone || e.recipient_name || e.recipient_group)
+        && Boolean(e.scheduled_timestamp))
+      || (Boolean(pending?.is_fresh) && isComplete(e, hasMedia));
 
     const tooUncertain =
       (intentResult.confidence ?? 0) < MIN_CONFIDENCE && !requestIsComplete;
@@ -644,13 +677,14 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
     if (!scheduled_timestamp) missing.push('מועד השליחה');
 
     if (missing.length > 0) {
+      // Hold what is already understood, so the answer completes this request
+      // instead of starting a new one that is missing everything else.
+      await storePendingRequest(userId, senderPhone, entities, mediaId, mediaType);
+
       const hint = resolved.missingRecipientName
         ? `\n\nאין לי מספר שמור עבור ${resolved.missingRecipientName}. אפשר לשלוח פעם אחת עם המספר, ואשמור אותו.`
         : '';
-      await sendWhatsAppMessage(
-        senderPhone,
-        `חסר לי ${missing.join(' ו')}.${hint}\n\nדוגמה:\nשלח לדני 0508765480 מחר ב-9:00 "נתראה בפגישה"`
-      );
+      await sendWhatsAppMessage(senderPhone, `חסר לי ${missing.join(' ו')}.${hint}`);
       return;
     }
 
@@ -757,6 +791,9 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
     if (billed > 0) {
       await incrementMonthlyUsage(userId, billed);
     }
+
+    // The request is complete and must not merge into whatever is said next.
+    await clearPendingRequest(senderPhone);
 
     // The file is now attached to a queued message and should not latch onto
     // the next request as well.
