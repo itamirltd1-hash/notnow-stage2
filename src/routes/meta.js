@@ -21,7 +21,7 @@ import {
   isPendingRecipient, isKnownRecipient, isGroupsListQuestion, describeGroups,
   SYNTAX_HELP
 } from '../groups/groupCommands.js';
-import { isGreeting, isHelpRequest, welcomeMessage, helpMessage, consentClarification, recipientGreeting } from '../meta/welcome.js';
+import { isGreeting, isHelpRequest, isCourtesy, courtesyReply, welcomeMessage, helpMessage, consentClarification, recipientGreeting } from '../meta/welcome.js';
 import { parseNameCommand, runNameCommand, rememberProfileName, getDisplayName } from '../auth/displayName.js';
 import { parseQueueCommand, runQueueCommand, cancelChosenEntry } from '../queue/queueCommands.js';
 import {
@@ -207,6 +207,12 @@ router.post('/webhook', async (req, res) => {
     }
     if (type === 'text' && isHelpRequest(text)) {
       await sendWhatsAppMessage(phone, helpMessage());
+      return;
+    }
+
+    // A thank-you is not a question about the product.
+    if (type === 'text' && isCourtesy(text)) {
+      await sendWhatsAppMessage(phone, courtesyReply());
       return;
     }
 

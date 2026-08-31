@@ -13,6 +13,19 @@ export function isHelpRequest(text) {
   return HELP.test(text);
 }
 
+// "תודה" was being classified as a question about the product and answered
+// with two paid model calls. Courtesy deserves courtesy, not an explanation.
+const COURTESY =
+  /^\s*(תודה|תודה\s+רבה|מעולה|מצוין|יופי|סבבה|אחלה|מגניב|כל\s+הכבוד|thanks|thank\s+you|thx|great|nice|perfect|👍)\s*[!.]*\s*$/i;
+
+export function isCourtesy(text) {
+  return COURTESY.test(text);
+}
+
+export function courtesyReply() {
+  return 'בשמחה.';
+}
+
 /**
  * Shown once, the first time a number ever writes to the bot.
  */
