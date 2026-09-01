@@ -4,7 +4,10 @@ import { languageForPhone } from '../i18n/language.js';
 import { t } from '../i18n/messages.js';
 
 // Phrased as people phrase it, not as a policy names it.
-const ERASE = /^\s*(?:מחק|תמחק|מחקו|תמחקו|הסר\s+לגמרי|למחוק)\s*(?:אותי|את\s+(?:כל\s+)?(?:המידע|הפרטים|הנתונים)\s*(?:שלי)?)\s*[!.]?\s*$/;
+// Erasure is checked before consent, so "delete me" must be more than the
+// bare "remove" that means "stop messaging me" — a person asking to be
+// forgotten is asking for something the opt-out does not give them.
+const ERASE = /^\s*(?:(?:מחק|תמחק|מחקו|תמחקו|הסר\s+לגמרי|למחוק)\s*(?:אותי|את\s+(?:כל\s+)?(?:המידע|הפרטים|הנתונים)\s*(?:שלי)?)|(?:delete|erase|remove|forget)\s+(?:me|my\s+(?:data|details|info|information|account))|forget\s+about\s+me)\s*[!.]?\s*$/i;
 
 export function isErasureRequest(text) {
   return ERASE.test(text);

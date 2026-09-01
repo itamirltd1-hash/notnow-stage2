@@ -2,8 +2,15 @@ import pool from '../db/pool.js';
 import { getLanguage } from '../i18n/language.js';
 import { t, mediaLabel, formatWhen } from '../i18n/messages.js';
 
-const LIST = /^\s*(?:מה\s+בתור|מה\s+מתוזמן|בתור|התור|תור|רשימה|queue)\s*[?？]?\s*$/i;
-const CANCEL = /^\s*(?:בטל|תבטל|בטלי|ביטול)\s*(?:את\s+)?(\d+|הכל|הכול|all)?\s*[!.]?\s*$/i;
+// Both languages in one pattern rather than one per language: a message is
+// tested against every alternative anyway, and two patterns drift apart the
+// moment someone adds a synonym to only one of them.
+const LIST = /^\s*(?:מה\s+בתור|מה\s+מתוזמן|בתור|התור|תור|רשימה|queue|the\s+queue|what(?:'?s|\s+is)?\s+(?:in\s+)?(?:the\s+)?queue|what(?:'?s|\s+is)\s+scheduled|what(?:'?s|\s+is)\s+pending|scheduled|pending|list)\s*[?？]?\s*$/i;
+
+// A bare "cancel" reaches here before it reaches isAbandonment, exactly as a
+// bare "בטל" does — the queue is what people mean by the word on its own, and
+// abandoning a half-finished request has its own words below.
+const CANCEL = /^\s*(?:בטל|תבטל|בטלי|ביטול|cancel|delete)\s*(?:את\s+)?(\d+|הכל|הכול|all|everything)?\s*[!.]?\s*$/i;
 
 export function parseQueueCommand(text) {
   if (LIST.test(text)) return { action: 'list' };
@@ -12,7 +19,7 @@ export function parseQueueCommand(text) {
   if (cancel) {
     const target = cancel[1];
     if (!target) return { action: 'cancel', target: null };
-    if (/^(הכל|הכול|all)$/i.test(target)) return { action: 'cancel', target: 'all' };
+    if (/^(הכל|הכול|all|everything)$/i.test(target)) return { action: 'cancel', target: 'all' };
     return { action: 'cancel', target: Number(target) };
   }
 

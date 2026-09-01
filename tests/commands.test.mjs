@@ -1,0 +1,219 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { parseQueueCommand } from '../src/queue/queueCommands.js';
+import { isErasureRequest } from '../src/privacy/erasure.js';
+import { isAbandonment } from '../src/scheduling/pendingRequest.js';
+import { parseNameCommand } from '../src/auth/displayName.js';
+import { isQuotaQuestion } from '../src/billing/quotaCommands.js';
+import { isGreeting, isHelpRequest, isCourtesy } from '../src/meta/welcome.js';
+import { isTermsAcceptance } from '../src/legal/terms.js';
+
+/**
+ * Every command has to answer to both languages.
+ *
+ * The negative cases matter more than the positive ones here. A pattern that
+ * fails to match is a command that quietly does nothing; a pattern that
+ * matches too much swallows a message someone meant to send. The second is
+ * worse, and it is the one a list of happy-path examples never catches — an
+ * earlier version of looksLikeGroupCommand matched nothing at all and its
+ * tests passed, because they only checked things that should not match.
+ */
+
+test('the queue is listed in either language', () => {
+  for (const text of [
+    'מה בתור', 'בתור', 'רשימה', 'מה מתוזמן',
+    'queue', 'the queue', "what's in the queue", 'what is in the queue',
+    "what's scheduled", 'scheduled', 'pending', 'list', 'What Is Pending?'
+  ]) {
+    assert.deepEqual(parseQueueCommand(text), { action: 'list' }, text);
+  }
+});
+
+test('a queued message is cancelled by number in either language', () => {
+  assert.deepEqual(parseQueueCommand('בטל 2'), { action: 'cancel', target: 2 });
+  assert.deepEqual(parseQueueCommand('cancel 2'), { action: 'cancel', target: 2 });
+  assert.deepEqual(parseQueueCommand('delete 3'), { action: 'cancel', target: 3 });
+  assert.deepEqual(parseQueueCommand('בטל הכל'), { action: 'cancel', target: 'all' });
+  assert.deepEqual(parseQueueCommand('cancel all'), { action: 'cancel', target: 'all' });
+  assert.deepEqual(parseQueueCommand('cancel everything'), { action: 'cancel', target: 'all' });
+  assert.deepEqual(parseQueueCommand('cancel'), { action: 'cancel', target: null });
+});
+
+test('a message being scheduled is never read as a queue command', () => {
+  for (const text of [
+    'שלח לדני מחר "בטל את הפגישה"',
+    'send to Dan tomorrow "cancel the meeting"',
+    'remind me to cancel the subscription',
+    'תזכיר לי לבטל את החדר'
+  ]) {
+    assert.equal(parseQueueCommand(text), null, text);
+  }
+});
+
+// Being forgotten and being left alone are different requests, and only one
+// of them is reversible.
+test('erasure is asked for in either language', () => {
+  for (const text of [
+    'מחק אותי', 'תמחק את המידע שלי', 'מחק את כל הפרטים שלי',
+    'delete me', 'Delete my data', 'erase me', 'forget me',
+    'forget about me', 'remove my account', 'delete my information'
+  ]) {
+    assert.equal(isErasureRequest(text), true, text);
+  }
+});
+
+test('an opt-out is not an erasure request', () => {
+  // These belong to consent, which runs immediately after and handles them.
+  for (const text of ['stop', 'remove', 'unsubscribe', 'הסר', 'לא', 'no']) {
+    assert.equal(isErasureRequest(text), false, text);
+  }
+});
+
+test('a half-finished request is abandoned in either language', () => {
+  for (const text of [
+    'לא משנה', 'עזוב', 'שכח מזה', 'בטל את זה',
+    'never mind', 'nevermind', 'forget it', 'drop it', 'leave it'
+  ]) {
+    assert.equal(isAbandonment(text), true, text);
+  }
+});
+
+// The queue command matches "cancel" first, so listing it in ABANDON as well
+// would be a dead alternative — the kind that reads as working and is not.
+test('a bare cancel belongs to the queue, in both languages', () => {
+  assert.deepEqual(parseQueueCommand('cancel'), { action: 'cancel', target: null });
+  assert.deepEqual(parseQueueCommand('בטל'), { action: 'cancel', target: null });
+});
+
+test('the display name is set and read in either language', () => {
+  assert.deepEqual(parseNameCommand('קרא לי דנה'), { action: 'set', name: 'דנה' });
+  assert.deepEqual(parseNameCommand('call me Dana'), { action: 'set', name: 'Dana' });
+  assert.deepEqual(parseNameCommand('My name is Dana'), { action: 'set', name: 'Dana' });
+  assert.deepEqual(parseNameCommand('שנה את השם שלי לדנה'), { action: 'set', name: 'דנה' });
+  assert.deepEqual(parseNameCommand('change my name to Dana'), { action: 'set', name: 'Dana' });
+  assert.deepEqual(parseNameCommand('set my name to Dana'), { action: 'set', name: 'Dana' });
+
+  assert.deepEqual(parseNameCommand('מה השם שלי'), { action: 'get' });
+  assert.deepEqual(parseNameCommand("what's my name"), { action: 'get' });
+  assert.deepEqual(parseNameCommand('what is my name?'), { action: 'get' });
+});
+
+test('the quota is asked about in either language', () => {
+  for (const text of [
+    'כמה הודעות נשארו לי', 'מה המצב עם החבילה', 'מכסה', 'יתרה',
+    'how many messages do i have left', 'how many are left',
+    'how many messages remaining', 'balance', 'usage', 'my plan', 'quota'
+  ]) {
+    assert.equal(isQuotaQuestion(text), true, text);
+  }
+});
+
+// This pattern matches inside a sentence, so a common English noun in a
+// message being scheduled must not trigger it.
+test('a scheduled message mentioning a balance is not a quota question', () => {
+  for (const text of [
+    'send to Dan tomorrow "check the balance"',
+    'remind me to check my plan for the trip',
+    'תזכיר לי לבדוק את היתרה בבנק'
+  ]) {
+    assert.equal(isQuotaQuestion(text), false, text);
+  }
+});
+
+test('greetings, help and courtesy answer to both languages', () => {
+  for (const text of ['שלום', 'היי', 'hi', 'hello', 'hey there', 'Good morning']) {
+    assert.equal(isGreeting(text), true, text);
+  }
+  for (const text of ['עזרה', 'פקודות', 'help', 'commands', 'what can you do', '?']) {
+    assert.equal(isHelpRequest(text), true, text);
+  }
+  for (const text of ['תודה', 'מעולה', 'thanks', 'thank you', 'cheers', 'cool', 'perfect']) {
+    assert.equal(isCourtesy(text), true, text);
+  }
+});
+
+test('terms are accepted in either language', () => {
+  for (const text of ['מאשר', 'אני מאשרת', 'מסכים', 'accept', 'agree']) {
+    assert.equal(isTermsAcceptance(text), true, text);
+  }
+});
+
+// ── Groups ────────────────────────────────────────────────────────────────
+import {
+  parseGroupCommand, looksLikeGroupCommand, isGroupsListQuestion
+} from '../src/groups/groupCommands.js';
+
+test('a group is created in either language', () => {
+  for (const text of ['צור קבוצה טסטרים', 'create group testers',
+                      'make a new group called testers', 'start a group testers']) {
+    assert.deepEqual(parseGroupCommand(text).action, 'create', text);
+  }
+});
+
+// English says the person first and the group last; Hebrew says it the other
+// way round. Both have to end up as the same command.
+test('a member is added in either language and either word order', () => {
+  const expected = { action: 'add', args: ['testers', '0501111111', 'Dana'] };
+  assert.deepEqual(parseGroupCommand('add to testers 0501111111 Dana'), expected);
+  assert.deepEqual(parseGroupCommand('add Dana 0501111111 to testers'), expected);
+  assert.deepEqual(parseGroupCommand('put 0501111111 Dana into testers'), expected);
+  assert.deepEqual(
+    parseGroupCommand('הוסף לטסטרים 0501111111 דנה'),
+    { action: 'add', args: ['טסטרים', '0501111111', 'דנה'] }
+  );
+});
+
+test('a member is removed in either language and either word order', () => {
+  const expected = { action: 'remove', args: ['testers', 'Dana'] };
+  assert.deepEqual(parseGroupCommand('remove Dana from testers'), expected);
+  assert.deepEqual(parseGroupCommand('delete Dana from the group testers'), expected);
+  assert.deepEqual(
+    parseGroupCommand('מחק מטסטרים דנה'),
+    { action: 'remove', args: ['טסטרים', 'דנה'] }
+  );
+});
+
+test('members are listed in either language', () => {
+  for (const text of ['who is in testers', "who's in testers",
+                      'show me the group testers', 'members of the group testers']) {
+    assert.deepEqual(parseGroupCommand(text), { action: 'members', args: ['testers'] }, text);
+  }
+  assert.deepEqual(parseGroupCommand('מי בטסטרים'), { action: 'members', args: ['טסטרים'] });
+});
+
+// One line names the group and the rest inherit it — people write the list
+// that way, and dropping the inheritance silently loses everyone after line 1.
+test('a group named on the first line carries to the rest', () => {
+  const batch = parseGroupCommand(
+    'add to testers 0501111111 Dana\nadd 0502222222 Roni\nadd Yossi 0503333333'
+  );
+  assert.equal(batch.action, 'batch');
+  assert.deepEqual(batch.commands.map(c => c.args[0]), ['testers', 'testers', 'testers']);
+});
+
+test('which groups exist is asked in either language', () => {
+  for (const text of ['קבוצות', 'כמה קבוצות יש לי', 'אילו קבוצות יש לי',
+                      'groups', 'my groups', 'how many groups do i have',
+                      'which groups do i have', 'show my groups']) {
+    assert.equal(isGroupsListQuestion(text), true, text);
+  }
+});
+
+test('naming one group is not asking which groups exist', () => {
+  for (const text of ['תשלח לקבוצת צוות מחר', 'send to the group testers tomorrow',
+                      'create group testers', 'צור קבוצה טסטרים']) {
+    assert.equal(isGroupsListQuestion(text), false, text);
+  }
+});
+
+// The English verbs are ordinary sentence openers. Treating a bare "add" as a
+// malformed group command would answer a scheduling request with group syntax.
+test('an English sentence that merely starts with a verb is not a group command', () => {
+  for (const text of ['add a reminder for tomorrow', 'make a note',
+                      'delete the meeting', 'put the kettle on']) {
+    assert.equal(looksLikeGroupCommand(text), false, text);
+  }
+  assert.equal(looksLikeGroupCommand('add Dana to the group testers'), true);
+  assert.equal(looksLikeGroupCommand('הוסף משהו'), true);
+});

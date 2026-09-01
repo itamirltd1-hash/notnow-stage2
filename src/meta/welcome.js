@@ -3,8 +3,8 @@ import { t } from '../i18n/messages.js';
 
 // A first message used to cost a model call and come back as "לא הבנתי" —
 // the worst possible introduction. These are matched before anything else.
-const GREETING = /^\s*(היי|הי|שלום|הלו|אהלן|start|hi|hello|hey)\s*[!.?]?\s*$/i;
-const HELP = /^\s*(עזרה|עזרו|פקודות|מה\s+אתה\s+יודע|מה\s+אפשר|help|\?)\s*[!.?]?\s*$/i;
+const GREETING = /^\s*(היי|הי|שלום|הלו|אהלן|start|hi|hiya|hello|hey|hey\s+there|good\s+(?:morning|afternoon|evening))\s*[!.?]?\s*$/i;
+const HELP = /^\s*(עזרה|עזרו|פקודות|מה\s+אתה\s+יודע|מה\s+אפשר|help|commands|what\s+can\s+you\s+do|what\s+do\s+you\s+do|what\s+can\s+i\s+do|\?)\s*[!.?]?\s*$/i;
 
 export function isGreeting(text) {
   return GREETING.test(text);
@@ -17,7 +17,7 @@ export function isHelpRequest(text) {
 // "תודה" was being classified as a question about the product and answered
 // with two paid model calls. Courtesy deserves courtesy, not an explanation.
 const COURTESY =
-  /^\s*(תודה|תודה\s+רבה|מעולה|מצוין|יופי|סבבה|אחלה|מגניב|כל\s+הכבוד|thanks|thank\s+you|thx|great|nice|perfect|👍)\s*[!.]*\s*$/i;
+  /^\s*(תודה|תודה\s+רבה|מעולה|מצוין|יופי|סבבה|אחלה|מגניב|כל\s+הכבוד|thanks|thanks\s+a\s+lot|thank\s+you|thx|ty|cheers|great|nice|perfect|cool|awesome|excellent|lovely|👍)\s*[!.]*\s*$/i;
 
 export function isCourtesy(text) {
   return COURTESY.test(text);

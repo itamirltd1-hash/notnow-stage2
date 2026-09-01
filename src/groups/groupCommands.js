@@ -6,12 +6,14 @@ import { normalizePhoneNumber } from '../auth/userContextExtractor.js';
 import { formatOptions } from '../meta/pendingChoice.js';
 import pool from '../db/pool.js';
 import { t } from '../i18n/messages.js';
+import { getLanguage } from '../i18n/language.js';
 
 // Management commands are matched by pattern rather than sent to the model.
 // Scheduling is fuzzy and benefits from a model; management is precise and
 // destructive — "מחק מטסטרים דנה" must never remove a different person because
 // a parse came back at 0.6 confidence.
 const CREATE = /^\s*(?:צור|תצור|תיצור|פתח|תפתח)\s+קבוצ(?:ה|ת)\s+(.+?)\s*$/;
+const CREATE_EN = /^\s*(?:create|make|start|new)\s+(?:a\s+)?(?:new\s+)?group\s+(?:called\s+|named\s+)?(.+?)\s*$/i;
 // Read-only, so a loose match costs nothing: at worst it names a group that
 // does not exist and falls through. Destructive commands stay strict.
 // "מי בטסטרים" and "תוכל להראות לי מי מקבוצת בדיקה?" are the same question.
@@ -20,16 +22,49 @@ const MEMBERS_PHRASED =
 const MEMBERS_SHORT = /^\s*מי\s+ב(.+?)\s*[?？.]?\s*$/;
 const REMOVE = /^\s*(?:מחק|תמחק|הסר|תסיר|הוצא)\s+מ(?:קבוצת\s+)?(\S+)\s+(?:את\s+)?(.+?)\s*$/;
 
+// English says it the other way round — the person first, the group after —
+// so these capture (person, group) and parseLine swaps them.
+const REMOVE_EN =
+  /^\s*(?:remove|delete|drop|take)\s+(.+?)\s+(?:out\s+)?(?:of|from)\s+(?:the\s+)?(?:group\s+)?(\S+)\s*$/i;
+const MEMBERS_SHORT_EN = /^\s*who(?:'?s|\s+is|\s+are)?\s+in\s+(?:the\s+)?(.+?)\s*[?？.]?\s*$/i;
+// The looser one insists on the word "group", because "show me the queue"
+// would otherwise be read as asking who is in a group called "queue".
+const MEMBERS_PHRASED_EN =
+  /^\s*(?:show|list|members\s+of|who(?:'?s|\s+is|\s+are)?\s+in)\s+(?:me\s+)?(?:the\s+)?group\s+(.+?)\s*[?？.]?\s*$/i;
+
 // "הוסף [לקבוצת X] [את] <the rest>" — the rest holds a phone and a name in
 // whichever order the person happened to say them, which is why it is pulled
 // apart afterwards rather than by more alternatives here.
 const ADD = /^\s*(?:הוסף|תוסיף|צרף|תצרף)\s+(?:ל(?:קבוצת\s+)?(\S+)\s+)?(?:את\s+)?(.+?)\s*$/;
+
+// Three shapes, tried in this order because the first two are more specific
+// and the third would swallow them: "add X to Y" ends up as a person called
+// "X to Y" if the bare form is tried first.
+const ADD_EN_TO_FIRST =
+  /^\s*(?:add|put)\s+(?:in)?to\s+(?:the\s+)?(?:group\s+)?(\S+)\s+(.+?)\s*$/i;
+const ADD_EN_TO_LAST =
+  /^\s*(?:add|put)\s+(.+?)\s+(?:in)?to\s+(?:the\s+)?(?:group\s+)?(\S+)\s*$/i;
+const ADD_EN_BARE = /^\s*(?:add|put)\s+(.+?)\s*$/i;
 const PHONE_IN_TEXT = /([+\d][\d\-\s()]{6,}\d)/;
 
 // \b is ASCII-only in JavaScript, so it never matches after a Hebrew letter —
-// this must use a lookahead for whitespace or end of line instead.
+// this must use a lookahead for whitespace or end of line instead. The same
+// lookahead is used on the English side rather than \b, so both halves of the
+// rule read the same way and neither can be copied wrong later.
 const MANAGEMENT_VERB =
   /^\s*(?:צור|תצור|תיצור|פתח|תפתח|הוסף|תוסיף|צרף|תצרף|מחק|תמחק|הסר|תסיר|הוצא)(?=\s|$)/;
+
+// The English verbs are ordinary sentence openers — "add a reminder", "make a
+// note", "delete the meeting" — so on their own they say nothing. They count
+// as management only when the word "group" is actually present. Falling
+// through to the model costs one parse; claiming a malformed group command
+// costs the sender the message they were writing.
+const MANAGEMENT_VERB_EN =
+  /^\s*(?:create|make|start|new|add|put|remove|delete|drop|take)(?=\s|$).*\bgroups?\b/i;
+
+function looksLikeManagement(line) {
+  return MANAGEMENT_VERB.test(line) || MANAGEMENT_VERB_EN.test(line);
+}
 
 /**
  * Split "הוסף" arguments into a phone and a name, in either order.
@@ -44,19 +79,40 @@ function splitContact(rest) {
 }
 
 function parseLine(line) {
-  const create = line.match(CREATE);
+  const create = line.match(CREATE) || line.match(CREATE_EN);
   if (create) return { action: 'create', args: [create[1]] };
 
   const remove = line.match(REMOVE);
   if (remove) return { action: 'remove', args: [remove[1], remove[2]] };
 
-  const add = line.match(ADD);
+  // (person, group) in English, (group, person) in Hebrew.
+  const removeEn = line.match(REMOVE_EN);
+  if (removeEn) return { action: 'remove', args: [removeEn[2], removeEn[1]] };
+
+  const add = line.match(ADD_EN_TO_FIRST);
   if (add) {
     const contact = splitContact(add[2]);
-    if (contact) return { action: 'add', args: [add[1] || null, contact.phone, contact.name] };
+    if (contact) return { action: 'add', args: [add[1], contact.phone, contact.name] };
   }
 
-  const members = line.match(MEMBERS_SHORT) || line.match(MEMBERS_PHRASED);
+  const addLast = line.match(ADD_EN_TO_LAST);
+  if (addLast) {
+    const contact = splitContact(addLast[1]);
+    if (contact) return { action: 'add', args: [addLast[2], contact.phone, contact.name] };
+  }
+
+  const addHe = line.match(ADD) || line.match(ADD_EN_BARE);
+  if (addHe) {
+    // The Hebrew pattern captures the group in group 1 and the rest in 2; the
+    // bare English one has only the rest.
+    const rest = addHe[2] === undefined ? addHe[1] : addHe[2];
+    const group = addHe[2] === undefined ? null : addHe[1];
+    const contact = splitContact(rest);
+    if (contact) return { action: 'add', args: [group || null, contact.phone, contact.name] };
+  }
+
+  const members = line.match(MEMBERS_SHORT) || line.match(MEMBERS_PHRASED)
+    || line.match(MEMBERS_PHRASED_EN) || line.match(MEMBERS_SHORT_EN);
   if (members) return { action: 'members', args: [members[1]] };
 
   return null;
@@ -99,7 +155,7 @@ export function parseGroupCommand(text) {
 }
 
 export function looksLikeGroupCommand(text) {
-  return text.split('\n').some(line => MANAGEMENT_VERB.test(line));
+  return text.split('\n').some(line => looksLikeManagement(line));
 }
 
 // "קבוצת <שם>" names one group; the plural on its own means the collection.
@@ -110,42 +166,67 @@ const ASKS_ABOUT_GROUPS = /קבוצ/;
 const LISTING_WORD =
   /אילו|איזה|איזו|כמה|מה\s|מהן|מהם|יש\s+לי|תראה|תראי|הראה|הצג|תציג|רשימ|כל\s+ה/;
 
+// The same rule in English, where the singular and plural do the separating:
+// "group testers" names one, "groups do I have" asks about the collection.
+// \bgroup\b does not match inside "groups", which is what makes that work.
+const NAMES_A_GROUP_EN = /\bgroup\b\s+\S/i;
+const ASKS_ABOUT_GROUPS_EN = /\bgroups?\b/i;
+const LISTING_WORD_EN =
+  /\b(?:which|what|how\s+many|my|all|list|show|any|do\s+i\s+have)\b/i;
+
 /**
  * Is this a question about which groups exist, rather than about one of them?
  */
 export function isGroupsListQuestion(text) {
   const t = text.trim();
 
-  // Bare "קבוצות" / "קבוצה" / "הקבוצות שלי".
+  // Bare "קבוצות" / "קבוצה" / "הקבוצות שלי" / "groups" / "my groups".
   if (/^(?:ה)?(?:קבוצות|קבוצה)(?:\s+שלי)?\s*[?？.]?$/.test(t)) return true;
-  if (/^groups\s*[?？.]?$/i.test(t)) return true;
+  if (/^(?:my\s+)?groups?\s*[?？.]?$/i.test(t)) return true;
 
-  if (!ASKS_ABOUT_GROUPS.test(t)) return false;
-  if (NAMES_A_GROUP.test(t)) return false;      // asking about one group
-  if (MANAGEMENT_VERB.test(t)) return false;    // creating or changing one
+  if (looksLikeManagement(t)) return false;     // creating or changing one
 
-  return LISTING_WORD.test(t);
+  if (ASKS_ABOUT_GROUPS.test(t)) {
+    if (NAMES_A_GROUP.test(t)) return false;    // asking about one group
+    return LISTING_WORD.test(t);
+  }
+
+  if (ASKS_ABOUT_GROUPS_EN.test(t)) {
+    if (NAMES_A_GROUP_EN.test(t)) return false;
+    return LISTING_WORD_EN.test(t);
+  }
+
+  return false;
 }
 
 /**
  * Answer both "which groups" and "how many" in one line, since people ask it
  * either way and both want the same picture.
  */
+/**
+ * "one person" and "12 people" are different words in both languages, and
+ * "1 people" is the sort of thing a reader notices immediately.
+ */
+function groupSize(n, lang) {
+  if (n === 0) return t('group.size.empty', lang);
+  return n === 1 ? t('group.size.one', lang) : t('group.size.many', lang, { n });
+}
+
 export async function describeGroups(userId) {
+  const lang = await getLanguage(userId);
   const groups = await listGroups(userId);
 
-  if (groups.length === 0) {
-    return 'אין לך קבוצות שמורות. ליצירה: צור קבוצה טסטרים';
-  }
+  if (groups.length === 0) return t('group.none', lang);
 
-  const count = groups.length === 1 ? 'קבוצה אחת' : `${groups.length} קבוצות`;
-  const lines = groups.map(g => {
-    const n = Number(g.member_count);
-    const members = n === 0 ? 'ריקה' : n === 1 ? 'איש אחד' : `${n} אנשים`;
-    return `• ${g.name} — ${members}`;
-  });
+  const count = groups.length === 1
+    ? t('group.count.one', lang)
+    : t('group.count.many', lang, { n: groups.length });
 
-  return `יש לך ${count}:\n${lines.join('\n')}`;
+  const lines = groups.map(g => t('group.line', lang, {
+    name: g.name, members: groupSize(Number(g.member_count), lang)
+  }));
+
+  return t('group.list', lang, { count, lines: lines.join('\n') });
 }
 
 export function SYNTAX_HELP(lang = 'he') {
@@ -158,6 +239,8 @@ export function SYNTAX_HELP(lang = 'he') {
  * whether the right person was removed.
  */
 export async function runGroupCommand(userId, command) {
+  const lang = await getLanguage(userId);
+
   // Several commands in one message: report every line, so a member that
   // failed to add is visible instead of assumed.
   if (command.action === 'batch') {
@@ -172,7 +255,9 @@ export async function runGroupCommand(userId, command) {
       }
     }
     if (command.incomplete) {
-      lines.push(`\nלא הבנתי את השורה: "${command.incomplete}"\n\n${SYNTAX_HELP()}`);
+      lines.push(t('group.batchUnclear', lang, {
+        line: command.incomplete, help: SYNTAX_HELP(lang)
+      }));
     }
     return lines.join('\n');
   }
@@ -182,45 +267,52 @@ export async function runGroupCommand(userId, command) {
   switch (command.action) {
     case 'create': {
       const group = await createGroup(userId, a);
-      return `הקבוצה "${group.name}" נוצרה.\n\nאפשר להוסיף אליה אנשים כך:\nהוסף ל${group.name} 0501111111 דנה`;
+      return t('group.created', lang, { name: group.name });
     }
 
     case 'add': {
       const { match } = await findGroupsByName(userId, a);
-      if (!match) return `אין לי קבוצה בשם "${a}". אפשר ליצור אותה קודם:\nצור קבוצה ${a}`;
+      if (!match) return t('group.createFirst', lang, { name: a });
 
       const phone = normalizePhoneNumber(b);
-      if (!phone) return `"${b}" לא נראה לי כמו מספר טלפון. אפשר לכתוב אותו שוב?`;
+      if (!phone) return t('group.notAPhone', lang, { text: b });
 
-      const name = c || 'איש קשר';
+      const name = c || t('contact.fallbackName', lang);
       await addGroupMember(userId, match.group_id, phone, name);
       const members = await getGroupMembers(userId, match.group_id);
-      return `הוספתי את ${name} ${phone} לקבוצה "${match.name}". יש בה עכשיו ${members.length}.`;
+      return t('group.memberAdded', lang, {
+        name, phone, group: match.name, count: groupSize(members.length, lang)
+      });
     }
 
     case 'members': {
       const { match, candidates } = await findGroupsByName(userId, a);
       if (!match) {
         if (candidates.length > 1) {
-          return `יש לי כמה קבוצות בשם דומה:\n${candidates.map(g => `• ${g.name}`).join('\n')}`;
+          return t('group.similarNames', lang, {
+            names: candidates.map(g => `• ${g.name}`).join('\n')
+          });
         }
         return null; // probably not a group question at all
       }
 
       const members = await getGroupMembers(userId, match.group_id);
-      if (members.length === 0) return `אין עדיין אף אחד בקבוצה "${match.name}".`;
+      if (members.length === 0) return t('group.noMembers', lang, { name: match.name });
 
-      const label = {
-        granted: 'מאושר', declined: 'סורב',
-        requested: 'ממתין לאישור', unknown: 'טרם נשלחה בקשה'
-      };
-      return `בקבוצה "${match.name}" יש ${members.length}:\n` +
-        members.map(m => `• ${m.name} ${m.phone_number} — ${label[m.consent_status] || ''}`).join('\n');
+      return t('group.memberList', lang, {
+        name: match.name,
+        count: groupSize(members.length, lang),
+        lines: members.map(m => t('group.member', lang, {
+          name: m.name,
+          phone: m.phone_number,
+          status: t(`consent.status.${m.consent_status || 'unknown'}`, lang)
+        })).join('\n')
+      });
     }
 
     case 'remove': {
       const { match } = await findGroupsByName(userId, a);
-      if (!match) return `אין לי קבוצה בשם "${a}". אפשר לראות את כולן עם "קבוצות".`;
+      if (!match) return t('group.seeAll', lang, { name: a });
 
       const members = await getGroupMembers(userId, match.group_id);
       const phone = normalizePhoneNumber(b);
@@ -228,13 +320,16 @@ export async function runGroupCommand(userId, command) {
         m.phone_number === phone || m.name.toLowerCase() === b.trim().toLowerCase()
       );
 
-      if (target.length === 0) return `לא מצאתי את "${b}" בקבוצה "${match.name}".`;
+      if (target.length === 0) {
+        return t('group.memberNotFound', lang, { who: b, group: match.name });
+      }
 
       if (target.length > 1) {
         return {
-          reply: `יש כמה אנשים בשם "${b}" בקבוצה "${match.name}". את מי להסיר?\n` +
-            formatOptions(target, m => `${m.name} ${m.phone_number}`) +
-            `\n\nלהשיב באות.`,
+          reply: t('group.whichMember', lang, {
+            who: b, group: match.name,
+            options: formatOptions(target, m => `${m.name} ${m.phone_number}`)
+          }) + t('choice.replyWithLetter', lang),
           choice: {
             kind: 'remove_member',
             payload: {
@@ -249,7 +344,9 @@ export async function runGroupCommand(userId, command) {
       }
 
       await removeGroupMember(userId, match.group_id, target[0].contact_id);
-      return `הסרתי את ${target[0].name} ${target[0].phone_number} מהקבוצה "${match.name}".`;
+      return t('group.removedFrom', lang, {
+        name: target[0].name, phone: target[0].phone_number, group: match.name
+      });
     }
 
     default:

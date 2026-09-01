@@ -135,6 +135,77 @@ const STRINGS = {
   },
   'groups.unnamed': { he: 'קבוצה', en: 'group' },
 
+  // ── Group management ──────────────────────────────────────────────────
+  // Every reply names exactly what changed: "done" leaves the sender guessing
+  // whether the right person was removed from the right list.
+  'group.created': {
+    he: 'הקבוצה "{name}" נוצרה.\n\nאפשר להוסיף אליה אנשים כך:\nהוסף ל{name} 0501111111 דנה',
+    en: 'The group "{name}" is ready.\n\nAdd people to it like this:\nadd 0501111111 Dana to {name}'
+  },
+  'group.createFirst': {
+    he: 'אין לי קבוצה בשם "{name}". אפשר ליצור אותה קודם:\nצור קבוצה {name}',
+    en: 'I have no group called "{name}". Create it first:\ncreate group {name}'
+  },
+  'group.notAPhone': {
+    he: '"{text}" לא נראה לי כמו מספר טלפון. אפשר לכתוב אותו שוב?',
+    en: '"{text}" does not look like a phone number to me. Could you write it again?'
+  },
+  'group.memberAdded': {
+    he: 'הוספתי את {name} {phone} לקבוצה "{group}". יש בה עכשיו {count}.',
+    en: 'Added {name} {phone} to "{group}". It now has {count}.'
+  },
+  'group.similarNames': {
+    he: 'יש לי כמה קבוצות בשם דומה:\n{names}',
+    en: 'I have several groups with a similar name:\n{names}'
+  },
+  'group.noMembers': {
+    he: 'אין עדיין אף אחד בקבוצה "{name}".',
+    en: 'There is nobody in "{name}" yet.'
+  },
+  'group.memberList': {
+    he: 'בקבוצה "{name}" יש {count}:\n{lines}',
+    en: '"{name}" has {count}:\n{lines}'
+  },
+  'group.seeAll': {
+    he: 'אין לי קבוצה בשם "{name}". אפשר לראות את כולן עם "קבוצות".',
+    en: 'I have no group called "{name}". Write "groups" to see them all.'
+  },
+  'group.memberNotFound': {
+    he: 'לא מצאתי את "{who}" בקבוצה "{group}".',
+    en: 'I could not find "{who}" in "{group}".'
+  },
+  'group.whichMember': {
+    he: 'יש כמה אנשים בשם "{who}" בקבוצה "{group}". את מי להסיר?\n{options}',
+    en: 'There are several people called "{who}" in "{group}". Which one should I remove?\n{options}'
+  },
+  'group.removedFrom': {
+    he: 'הסרתי את {name} {phone} מהקבוצה "{group}".',
+    en: 'Removed {name} {phone} from "{group}".'
+  },
+  'group.batchUnclear': {
+    he: '\nלא הבנתי את השורה: "{line}"\n\n{help}',
+    en: '\nI did not follow this line: "{line}"\n\n{help}'
+  },
+  'group.none': {
+    he: 'אין לך קבוצות שמורות. ליצירה: צור קבוצה טסטרים',
+    en: 'You have no saved groups. To make one: create group testers'
+  },
+  'group.list': { he: 'יש לך {count}:\n{lines}', en: 'You have {count}:\n{lines}' },
+  'group.count.one':  { he: 'קבוצה אחת', en: 'one group' },
+  'group.count.many': { he: '{n} קבוצות', en: '{n} groups' },
+  'group.size.empty': { he: 'ריקה',       en: 'empty' },
+  'group.size.one':   { he: 'איש אחד',    en: 'one person' },
+  'group.size.many':  { he: '{n} אנשים',  en: '{n} people' },
+  'group.line':       { he: '• {name} — {members}', en: '• {name} — {members}' },
+  'group.member':     { he: '• {name} {phone} — {status}', en: '• {name} {phone} — {status}' },
+  'contact.fallbackName': { he: 'איש קשר', en: 'contact' },
+
+  // What the recipient has answered, if anything.
+  'consent.status.granted':   { he: 'מאושר',            en: 'agreed' },
+  'consent.status.declined':  { he: 'סורב',             en: 'refused' },
+  'consent.status.requested': { he: 'ממתין לאישור',     en: 'asked, no answer yet' },
+  'consent.status.unknown':   { he: 'טרם נשלחה בקשה',   en: 'not asked yet' },
+
   // ── Quota ─────────────────────────────────────────────────────────────
   'quota.unlimited': { he: 'המנוי שלך ללא הגבלה.', en: 'Your plan has no limit.' },
   'quota.checkFailed': {
@@ -211,8 +282,11 @@ const STRINGS = {
         '• send to Danny 0501234567 tomorrow at 9:00 "see you at the meeting"\n' +
         '• remind me in two hours to call the client back\n\n' +
         'You can also record a voice note and I will transcribe it.\n\n' +
-        'To reach several people at once you can save a group — each person gets ' +
-        'their own separate message, never a group chat.\n\n' +
+        'To reach several people at once, save a group — each person gets their ' +
+        'own separate message, never a group chat:\n' +
+        '• create group testers\n' +
+        '• add 0501111111 Dana to testers\n' +
+        '• send to the group testers tomorrow at 10 "good morning"\n\n' +
         'For the full list of commands, write "help".'
   },
   'welcome.naming': {
@@ -239,9 +313,6 @@ const STRINGS = {
         'אפשר להקליט הודעה ואתמלל אותה. אשאל אם לשלוח את הטקסט או את ההקלטה עצמה.\n\n' +
         'לתשומת לבכם: לפני שליחה למישהו בפעם הראשונה, אני מבקש את אישורו. ' +
         'ההודעה ממתינה עד שהוא מאשר.',
-    // The group syntax is deliberately absent here: those commands are matched
-    // by Hebrew patterns and do not yet answer to English words. Listing them
-    // would be advertising something that does not work.
     en: 'What I can do:\n\n' +
         '📅 Scheduling\n' +
         '• send to Danny 0501234567 tomorrow at 9:00 "see you there"\n' +
@@ -250,11 +321,15 @@ const STRINGS = {
         '📋 What is scheduled\n' +
         '• what is in the queue — everything not yet sent\n' +
         '• cancel — I will show the list and you pick a number\n\n' +
+        '👥 Groups — a private message each, never a group chat\n' +
+        '• create group testers\n' +
+        '• add 0501111111 Dana to testers\n' +
+        '• who is in testers\n' +
+        '• remove Dana from testers\n' +
+        '• groups\n\n' +
         '🎙️ Voice\n' +
         'Record a message and I will transcribe it. I will ask whether to send the ' +
         'words or the recording itself.\n\n' +
-        '👥 Groups let one message reach several people, each as their own private ' +
-        'message. Managing them still needs Hebrew wording for now.\n\n' +
         'Note: before I write to someone for the first time, I ask their permission. ' +
         'The message waits until they agree.'
   },
@@ -269,12 +344,12 @@ const STRINGS = {
         '• מי בטסטרים\n' +
         '• מחק מטסטרים דנה\n' +
         '• קבוצות — כל הקבוצות שלך',
-    en: 'Groups are managed with Hebrew wording for now:\n' +
-        '• צור קבוצה טסטרים — create a group called טסטרים\n' +
-        '• הוסף לטסטרים 0501111111 דנה — add someone to it\n' +
-        '• מי בטסטרים — who is in it\n' +
-        '• מחק מטסטרים דנה — remove someone\n' +
-        '• קבוצות — list all your groups'
+    en: 'Group commands:\n' +
+        '• create group testers\n' +
+        '• add 0501111111 Dana to testers\n' +
+        '• who is in testers\n' +
+        '• remove Dana from testers\n' +
+        '• groups — all of your groups'
   },
 
   // ── Scheduling: what is missing, and what cannot be done ──────────────

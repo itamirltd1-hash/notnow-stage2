@@ -5,11 +5,13 @@ import { t } from '../i18n/messages.js';
 // Two shapes, because Hebrew attaches the preposition to the word: "קרא לי דנה"
 // separates the name, while "שנה את השם שלי לדנה" glues ל to it.
 const SET_NAME_SPACED =
-  /^\s*(?:(?:קרא|תקרא|קראי)\s+לי|השם\s+שלי(?:\s+הוא)?|שמי)\s+(.+?)\s*[!.]?\s*$/;
+  /^\s*(?:(?:קרא|תקרא|קראי)\s+לי|השם\s+שלי(?:\s+הוא)?|שמי|call\s+me|my\s+name\s+is|i(?:'|’)?m\s+called)\s+(.+?)\s*[!.]?\s*$/i;
+// One trailing \s* serves both: Hebrew glues the preposition to the name
+// ("לדנה"), English separates it ("to Dana").
 const SET_NAME_PREFIXED =
-  /^\s*(?:שנה|תשנה|שני)\s+(?:את\s+)?השם\s+שלי\s+ל\s*(.+?)\s*[!.]?\s*$/;
+  /^\s*(?:(?:שנה|תשנה|שני)\s+(?:את\s+)?השם\s+שלי\s+ל|(?:change|set)\s+my\s+name\s+to)\s*(.+?)\s*[!.]?\s*$/i;
 
-const ASK_NAME = /^\s*(?:איך\s+קוראים\s+לי|מה\s+השם\s+שלי|איך\s+אתה\s+קורא\s+לי)\s*[?？]?\s*$/;
+const ASK_NAME = /^\s*(?:איך\s+קוראים\s+לי|מה\s+השם\s+שלי|איך\s+אתה\s+קורא\s+לי|what(?:'?s|\s+is)\s+my\s+name|how\s+do\s+you\s+call\s+me)\s*[?？]?\s*$/i;
 
 const MAX_LENGTH = 40;
 

@@ -5,7 +5,9 @@ import { normalizePhoneNumber } from '../auth/userContextExtractor.js';
 // never attaches itself to a question from hours ago.
 const TTL_MINUTES = 20;
 
-const ABANDON = /^\s*(?:לא\s+משנה|עזוב|עזבי|בטל\s+את\s+זה|שכח\s+מזה|תשכח\s+מזה|nevermind|cancel)\s*[!.]?\s*$/i;
+// "cancel" is deliberately absent: the queue command matches it first, the
+// same way "בטל" does, so listing it here would be a dead alternative.
+const ABANDON = /^\s*(?:לא\s+משנה|עזוב|עזבי|בטל\s+את\s+זה|שכח\s+מזה|תשכח\s+מזה|nevermind|never\s+mind|forget\s+it|forget\s+that|drop\s+it|leave\s+it|scrap\s+that)\s*[!.]?\s*$/i;
 
 export function isAbandonment(text) {
   return ABANDON.test(text);

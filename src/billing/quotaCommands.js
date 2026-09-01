@@ -3,8 +3,12 @@ import { isExempt } from './exemptions.js';
 import { getLanguage } from '../i18n/language.js';
 import { t, formatDate } from '../i18n/messages.js';
 
+// This one matches inside a sentence rather than the whole of it, which is
+// safe for the Hebrew phrases and not for a common English noun. So the
+// English single words are anchored to the whole message; only the phrases
+// that could not be part of a message being scheduled are left loose.
 const ASK_QUOTA =
-  /(?:כמה\s+(?:הודעות\s+)?(?:נשאר|נשארו|יש\s+לי|נותר|נותרו)|מה\s+(?:המצב\s+עם\s+)?(?:ה)?(?:חבילה|מכסה|מנוי)|מצב\s+(?:ה)?(?:חבילה|מכסה|מנוי)|^\s*מכסה\s*$|^\s*יתרה\s*$|quota)/i;
+  /(?:כמה\s+(?:הודעות\s+)?(?:נשאר|נשארו|יש\s+לי|נותר|נותרו)|מה\s+(?:המצב\s+עם\s+)?(?:ה)?(?:חבילה|מכסה|מנוי)|מצב\s+(?:ה)?(?:חבילה|מכסה|מנוי)|^\s*מכסה\s*$|^\s*יתרה\s*$|quota|how\s+many\s+(?:messages\s+)?(?:do\s+i\s+have\s+|are\s+)?(?:left|remaining)|how\s+much\s+(?:do\s+i\s+have\s+)?left|^\s*(?:balance|usage|my\s+plan)\s*[?？]?\s*$)/i;
 
 // Warn only once the month is nearly spent — earlier is noise, later is
 // useless. Sits alongside a confirmation rather than arriving on its own.
