@@ -1,4 +1,5 @@
 import { BRAND } from '../brand.js';
+import { isTranscriptionAvailable } from './transcriber.js';
 
 /**
  * What this service can and cannot do, written the way a user would ask.
@@ -12,7 +13,25 @@ import { BRAND } from '../brand.js';
  * "no" costs more than an honest "I can't".
  */
 export function capabilityDescription() {
+  // Claimed as a feature while the key is missing, this reads to the user as
+  // the bot lying: it says it transcribes, then answers a recording with
+  // "not available yet". The description follows the deployment.
+  const voice = isTranscriptionAvailable()
+    ? '- לקלוט הודעה קולית, לתמלל אותה, ולשאול אם לשלוח את הטקסט או את ההקלטה.'
+    : '- תמלול הודעות קוליות אינו פעיל כרגע. מי ששולח הקלטה מתבקש לכתוב את הבקשה כטקסט.';
+
   return `${BRAND} הוא בוט וואטסאפ שמתזמן הודעות. המשתמש כותב בשפה חופשית והבוט שולח בזמן.
+
+שפות
+- הבוט עובד בעברית ובאנגלית, ובשתיהן במלואן: אותן פקודות, אותן שאלות, אותן תשובות.
+- השפה נקבעת מההודעה הראשונה ונשמרת. הודעה בודדת בשפה אחרת אינה משנה אותה.
+- להחלפה: "דבר עברית" או "speak English". אפשר לבקש בכל שפה, גם בזו שהבוט
+  לא עונה בה כרגע.
+- שפות אחרות אינן נתמכות. מי שמבקש שפה אחרת מקבל תשובה כנה שהיא לא נתמכת.
+- המקבילות באנגלית לפקודות: "what is in the queue", "cancel 2", "cancel all",
+  "groups", "create group X", "add 0501111111 Dana to X", "who is in X",
+  "remove Dana from X", "call me Dana", "help", "delete me", "accept".
+- אם השואל כתב באנגלית, יש לצטט לו את הפקודות באנגלית ולא בעברית.
 
 מה שהוא יודע לעשות:
 
@@ -22,7 +41,7 @@ export function capabilityDescription() {
 - כששעה יכולה להתפרש לשתי דרכים ("ב-8"), הוא שואל בוקר או ערב וזוכר את התשובה.
 - לתזמן תמונה, סרטון או מסמך (כולל PDF), עם או בלי טקסט נלווה. שם הקובץ נשמר.
 - קבצים אפשר לתזמן עד 25 יום קדימה בלבד. טקסט — ללא הגבלת זמן.
-- לקלוט הודעה קולית, לתמלל אותה, ולשאול אם לשלוח את הטקסט או את ההקלטה.
+${voice}
 - לקרוא כרטיס איש קשר ששותף אליו, ולהשתמש בו כנמען.
 - כל הזמנים לפי שעון ישראל.
 
@@ -48,7 +67,7 @@ export function capabilityDescription() {
 - תזמון לקבוצה נספר לפי מספר האנשים בה: קבוצה של עשרה שווה לעשר הודעות.
 
 שונות
-- לשנות את השם שבו הבוט מציג את המשתמש בפני נמענים ("קרא לי דנה").
+- לשנות את השם שבו הבוט מציג את המשתמש בפני נמענים ("קרא לי דנה" / "call me Dana").
 
 מה שהוא לא יודע לעשות:
 - לא שולח הודעות חוזרות אוטומטית ("כל יום ראשון"). כל הודעה מתוזמנת בנפרד.
@@ -58,6 +77,7 @@ export function capabilityDescription() {
 - לא שולח למספר שלא אישר לקבל הודעות.
 - לא שולח מיילים. וואטסאפ בלבד.
 - לא שולח לכמה אנשים בהודעה אחת בלי קבוצה. לשניים ומעלה צריך ליצור קבוצה.
+  אם בבקשה הופיע מספר נוסף שלא נשלח אליו, הבוט אומר זאת באישור ולא שולח אליו בשקט.
 - לא מתזמן מדבקות.
 
 כשמשהו משתבש:
