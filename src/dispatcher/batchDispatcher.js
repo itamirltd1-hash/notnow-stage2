@@ -4,27 +4,19 @@ import { isWithinServiceWindow } from '../meta/serviceWindow.js';
 import { markMediaDeferred } from '../meta/deferredMedia.js';
 import { senderSignature, sign, signInline } from '../meta/attribution.js';
 import { isSuppressed } from '../privacy/erasure.js';
+import { resolveTemplate } from '../meta/templates.js';
+import { languageForPhone } from '../i18n/language.js';
+import { t } from '../i18n/messages.js';
 
 const BATCH_SIZE = 100;
 const RETRY_DELAYS = [5000, 15000, 60000]; // 5s, 15s, 60s backoff
 
-// Must match the template approved in Meta exactly, or every send is rejected.
-// Body: "שלום {{1}}, תזכורת להודעה: {{2}} (נשלח מ-Cue)"
-// The brand appears inside that approved body, so renaming it means
-// re-submitting the template — see src/brand.js.
-const TEMPLATE_LANGUAGE = process.env.META_TEMPLATE_LANGUAGE || 'he';
-
-// Delivering a message and asking permission to send one are different
-// sentences, and they need different templates. They shared one, worded as a
-// consent request — so a delivered message landed inside "reply 1 to receive
-// the message", quoting the message the recipient was already reading.
-//
-// Until the delivery template is approved this falls back to the old one and
-// the leak stands, which is why startup says so out loud.
-const CONSENT_TEMPLATE = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
-const TEMPLATE_NAME = process.env.META_DELIVERY_TEMPLATE_NAME || CONSENT_TEMPLATE;
-
-export const deliveryTemplateIsShared = !process.env.META_DELIVERY_TEMPLATE_NAME;
+// The template a send uses is resolved per job and per recipient language —
+// see src/meta/templates.js. The delivery wording is
+// "שלום {{1}}, תזכורת להודעה: {{2}} (נשלח מ-Cue)", and the brand sits inside
+// that approved body, so renaming it means re-submitting — see src/brand.js.
+// Whatever META_TEMPLATE_NAME points at is a *consent* request and must not
+// be used here: it wraps the delivered message in "reply 1 to receive it".
 
 /**
  * Main dispatcher: Batch process all pending messages due for delivery.
@@ -152,11 +144,13 @@ async function sendMessage(message) {
     console.log(`   ${recipient_phone} is outside the 24h window — using template`);
     // A media-only message has no text, and the template needs both slots
     // filled — an empty parameter is rejected outright.
-    const body = message_body || 'נשלח אליך קובץ. אפשר להשיב כאן כדי לקבל אותו.';
+    const lang = languageForPhone(recipient_phone);
+    const body = message_body || t('delivery.fileWaiting', lang);
+    const template = resolveTemplate('delivery', lang);
     return await sendTemplateMessage(
       recipient_phone,
-      TEMPLATE_NAME,
-      TEMPLATE_LANGUAGE,
+      template.name,
+      template.language,
       // The template's own sentence wraps this, so the signature goes inline.
       [recipient_name || 'שלום', signInline(body, signature)]
     );

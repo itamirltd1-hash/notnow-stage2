@@ -14,7 +14,8 @@ import { enforceQuota } from './src/billing/quotaMiddleware.js';
 import { exemptCount, listExempt } from './src/billing/exemptions.js';
 import { reportTemplateStatus, reportPhoneStatus, reportAccountLimits } from './src/meta/sendHandler.js';
 import { ensureWebhookSubscription } from './src/meta/webhookSubscription.js';
-import { dispatchPendingMessages, getDispatcherMetrics, deliveryTemplateIsShared } from './src/dispatcher/batchDispatcher.js';
+import { dispatchPendingMessages, getDispatcherMetrics } from './src/dispatcher/batchDispatcher.js';
+import { templateWarnings } from './src/meta/templates.js';
 import { purgeExpiredData } from './src/retention/purge.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -330,12 +331,8 @@ app.use((req, res) => {
 
       // Worth saying on every boot, because the symptom is invisible from
       // here: it only shows up in what a recipient reads.
-      if (deliveryTemplateIsShared) {
-        console.warn(
-          '⚠️  META_DELIVERY_TEMPLATE_NAME is not set, so scheduled messages go out ' +
-          'through the consent template. Its wording asks the recipient to reply to ' +
-          'receive a message it has already shown them.'
-        );
+      for (const warning of templateWarnings()) {
+        console.warn(`⚠️  ${warning}`);
       }
     })();
   });

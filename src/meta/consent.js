@@ -6,9 +6,8 @@ import { BRAND } from '../brand.js';
 import { isSuppressed } from '../privacy/erasure.js';
 import { languageForPhone } from '../i18n/language.js';
 import { t } from '../i18n/messages.js';
+import { resolveTemplate } from './templates.js';
 
-const TEMPLATE_NAME = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
-const TEMPLATE_LANGUAGE = process.env.META_TEMPLATE_LANGUAGE || 'he';
 
 // The words always count: "הסר" and "stop" are the opt-out keywords people
 // already expect, and dropping them would break a convention Meta relies on.
@@ -81,8 +80,9 @@ export async function requestConsent(userId, phone, senderName = null, recipient
       // What the slot wants is the one thing the template cannot know: who is
       // asking. The greeting slot is a name, and we usually have one; the
       // literal "שלום" we used to pass produced "שלום שלום".
+      const template = resolveTemplate('consent', lang);
       await sendTemplateMessage(
-        normalized, TEMPLATE_NAME, TEMPLATE_LANGUAGE,
+        normalized, template.name, template.language,
         [recipientName || 'שלום', senderName || 'מישהו']
       );
     }

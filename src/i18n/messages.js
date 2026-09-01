@@ -83,6 +83,12 @@ const STRINGS = {
     he: 'הוסרת. לא נשלח אליך הודעות נוספות.',
     en: 'You have been removed. No further messages will be sent to you.'
   },
+  // A file cannot travel inside a template, so the words go alone and the file
+  // follows the moment their reply opens the window.
+  'delivery.fileWaiting': {
+    he: 'נשלח אליך קובץ. אפשר להשיב כאן כדי לקבל אותו.',
+    en: 'A file was sent to you. Reply here and I will send it.'
+  },
   'erasure.confirmed': {
     he: 'נמחקת. כל המידע שהוחזק עליך — מספר, שם, והודעות שתוזמנו אליך — הוסר.\n\n' +
         'שמרנו רק את המספר עצמו ברשימת חסימה, כדי שלא נפנה אליך שוב — גם אם ינסו להוסיף אותך מחדש.',
