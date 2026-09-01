@@ -11,9 +11,14 @@
  * for, which Meta rejects outright rather than falling back.
  *
  * And asking permission is not the same sentence as delivering a message.
- * One template does both today. Its body is a delivery — it introduces {{2}}
- * as the message being delivered — so a consent request sent through it is
- * announced as the message it is asking permission to send.
+ * One template does both today, and its body is the consent question — so a
+ * delivered message arrives inside "reply 1 to receive the message", quoting
+ * the message the recipient is already reading.
+ *
+ * Which template a send actually reaches is decided by the WABA behind the
+ * phone number ID, not by any name here. The same name exists on more than
+ * one account in this project with different bodies, so a body read on the
+ * wrong account describes a template this code never touches.
  *
  * Everything defaults to what is approved today, so an unset variable keeps
  * the current behaviour rather than sending into a template that does not
@@ -25,31 +30,14 @@
  * for which job.
  */
 
-// The one template known to be approved and active. Its wording delivers a
-// message, so that is the job it is the default for.
-const DELIVERY_HE = {
+// The only usable template on the account that actually sends. Its body asks
+// the whole consent question — greeting, who is asking, and the two options —
+// so its {{2}} wants a name, not a sentence.
+const CONSENT_HE = {
   name: process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder',
   language: process.env.META_TEMPLATE_LANGUAGE || 'he',
-  carriesTheQuestion: false
+  carriesTheQuestion: true
 };
-
-const DELIVERY_EN = process.env.META_DELIVERY_TEMPLATE_NAME_EN
-  ? {
-      name: process.env.META_DELIVERY_TEMPLATE_NAME_EN,
-      language: process.env.META_DELIVERY_TEMPLATE_LANGUAGE_EN || 'en_US',
-      carriesTheQuestion: false
-    }
-  : null;
-
-// A consent template asks the whole question itself — greeting, who is
-// asking, and the two options. Its {{2}} wants a name, not a sentence.
-const CONSENT_HE = process.env.META_CONSENT_TEMPLATE_NAME
-  ? {
-      name: process.env.META_CONSENT_TEMPLATE_NAME,
-      language: process.env.META_CONSENT_TEMPLATE_LANGUAGE || 'he',
-      carriesTheQuestion: true
-    }
-  : null;
 
 const CONSENT_EN = process.env.META_CONSENT_TEMPLATE_NAME_EN
   ? {
@@ -59,9 +47,32 @@ const CONSENT_EN = process.env.META_CONSENT_TEMPLATE_NAME_EN
     }
   : null;
 
-const TEMPLATES = {
-  delivery: { he: DELIVERY_HE, en: DELIVERY_EN },
-  consent:  { he: CONSENT_HE,  en: CONSENT_EN }
+// A delivery template introduces {{2}} as the message being delivered. It
+// asks nothing, so a consent request must never fall through to it holding
+// only a name.
+const DELIVERY_HE = process.env.META_DELIVERY_TEMPLATE_NAME
+  ? {
+      name: process.env.META_DELIVERY_TEMPLATE_NAME,
+      language: process.env.META_DELIVERY_TEMPLATE_LANGUAGE || 'he',
+      carriesTheQuestion: false
+    }
+  : null;
+
+const DELIVERY_EN = process.env.META_DELIVERY_TEMPLATE_NAME_EN
+  ? {
+      name: process.env.META_DELIVERY_TEMPLATE_NAME_EN,
+      language: process.env.META_DELIVERY_TEMPLATE_LANGUAGE_EN || 'en_US',
+      carriesTheQuestion: false
+    }
+  : null;
+
+// Order matters: the right job first, then the right language, then the one
+// template known to exist.
+const CHAINS = {
+  'delivery|he': [DELIVERY_HE, CONSENT_HE],
+  'delivery|en': [DELIVERY_EN, DELIVERY_HE, CONSENT_EN, CONSENT_HE],
+  'consent|he':  [CONSENT_HE],
+  'consent|en':  [CONSENT_EN, CONSENT_HE]
 };
 
 /**
@@ -80,8 +91,8 @@ const TEMPLATES = {
  * name where the question should have been.
  */
 export function resolveTemplate(job, lang = 'he') {
-  const forJob = TEMPLATES[job] || TEMPLATES.delivery;
-  return forJob[lang] || forJob.he || DELIVERY_HE;
+  const chain = CHAINS[`${job}|${lang}`] || CHAINS[`${job}|he`] || CHAINS['consent|he'];
+  return chain.find(Boolean) || CONSENT_HE;
 }
 
 /**
@@ -91,11 +102,11 @@ export function resolveTemplate(job, lang = 'he') {
 export function templateWarnings() {
   const warnings = [];
 
-  if (!CONSENT_HE) {
+  if (!DELIVERY_HE) {
     warnings.push(
-      'META_CONSENT_TEMPLATE_NAME is not set, so a consent request goes out through ' +
-      `"${DELIVERY_HE.name}", whose body announces the message it is asking permission ` +
-      'to send.'
+      'META_DELIVERY_TEMPLATE_NAME is not set, so a scheduled message goes out through ' +
+      `"${CONSENT_HE.name}", which asks the recipient to reply 1 to receive the message ` +
+      'it has already shown them.'
     );
   }
   if (!CONSENT_EN) {

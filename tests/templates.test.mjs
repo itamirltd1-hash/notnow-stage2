@@ -25,21 +25,21 @@ test('an unknown job or language still resolves rather than throwing', () => {
   assert.ok(resolveTemplate('delivery').name);
 });
 
-// The delivery template asks nothing, so falling back to it for consent means
-// passing the question in. A bare sender name there reads to the recipient as
-// a message from a stranger, with no question and no way to refuse.
-test('a template that does not ask the question says so', () => {
+// A consent request passes either the sender's name or the whole question,
+// depending on whether the template asks anything itself. Get it backwards and
+// the recipient receives a stranger's name with no question and no way to
+// refuse — or the question twice, in two different wordings.
+test('every consent template says whether it asks the question itself', () => {
   for (const lang of SUPPORTED_LANGUAGES) {
-    const consent = resolveTemplate('consent', lang);
-    const delivery = resolveTemplate('delivery', lang);
+    assert.equal(
+      typeof resolveTemplate('consent', lang).carriesTheQuestion, 'boolean', lang
+    );
+  }
+});
 
-    assert.equal(typeof consent.carriesTheQuestion, 'boolean', lang);
-    assert.equal(delivery.carriesTheQuestion, false, `delivery/${lang}`);
-
-    // Falling back to the delivery template must never claim otherwise.
-    if (consent.name === delivery.name && consent.language === delivery.language) {
-      assert.equal(consent.carriesTheQuestion, false, `consent/${lang} fell back but claims to ask`);
-    }
+test('consent never resolves to a template that asks nothing', () => {
+  for (const lang of SUPPORTED_LANGUAGES) {
+    assert.equal(resolveTemplate('consent', lang).carriesTheQuestion, true, lang);
   }
 });
 
