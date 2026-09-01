@@ -18,6 +18,11 @@
  * Everything defaults to what is approved today, so an unset variable keeps
  * the current behaviour rather than sending into a template that does not
  * exist. Nothing switches to a template until someone says it is approved.
+ *
+ * The bodies are deliberately not written down here. The last comment that
+ * recorded one went stale when the template was edited, and the code went on
+ * trusting it for a week. Meta holds the body; this file holds only which
+ * name is used for which job.
  */
 
 const CONSENT_HE = {

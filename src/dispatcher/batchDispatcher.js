@@ -12,11 +12,18 @@ const BATCH_SIZE = 100;
 const RETRY_DELAYS = [5000, 15000, 60000]; // 5s, 15s, 60s backoff
 
 // The template a send uses is resolved per job and per recipient language —
-// see src/meta/templates.js. The delivery wording is
-// "שלום {{1}}, תזכורת להודעה: {{2}} (נשלח מ-Cue)", and the brand sits inside
-// that approved body, so renaming it means re-submitting — see src/brand.js.
-// Whatever META_TEMPLATE_NAME points at is a *consent* request and must not
-// be used here: it wraps the delivered message in "reply 1 to receive it".
+// see src/meta/templates.js.
+//
+// A comment here used to record the approved body as
+// "שלום {{1}}, תזכורת להודעה: {{2}} (נשלח מ-Cue)". That stopped being true
+// when the template was edited into a consent request, and the comment did
+// not move — so the code kept sending delivered messages into a body that
+// asks the recipient to reply 1 to receive what they are already reading.
+// A template's real body lives in Meta and nowhere else; do not record it
+// here again. What is safe to say is which job a template is for.
+//
+// The brand name is baked into each approved body, which is why renaming it
+// means re-submitting — see src/brand.js.
 
 /**
  * Main dispatcher: Batch process all pending messages due for delivery.
