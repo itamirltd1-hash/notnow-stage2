@@ -57,6 +57,49 @@ const STRINGS = {
   'schedule.declined': {
     he: '\nלא נשלח ל־{names} — הם ביקשו לא לקבל הודעות.',
     en: '\nNot sent to {names} — they asked not to receive messages.'
+  },
+
+  // ── What a recipient reads ────────────────────────────────────────────
+  // Addressed to someone who never signed up for anything, so it says who is
+  // asking and how to refuse, and nothing else. The two options are 1 and 2
+  // because that is what the approved template tells them to answer.
+  'consent.ask': {
+    he: '{who} לתזמן עבורך הודעות דרך {brand}.\n\n1 — להסכמה וקבלת ההודעה\n2 — לסירוב והסרה',
+    en: '{who} to schedule messages for you through {brand}.\n\n1 — agree and receive the message\n2 — refuse and be removed'
+  },
+  'consent.ask.by': {
+    he: '{name} ביקש',
+    en: '{name} has asked'
+  },
+  'consent.ask.anonymous': {
+    he: 'התקבלה בקשה',
+    en: 'A request was made'
+  },
+  'consent.granted': {
+    he: 'תודה! ההודעות שתוזמנו עבורך יישלחו במועדן.',
+    en: 'Thank you. The messages scheduled for you will arrive at their time.'
+  },
+  'consent.declined': {
+    he: 'הוסרת. לא נשלח אליך הודעות נוספות.',
+    en: 'You have been removed. No further messages will be sent to you.'
+  },
+  'erasure.confirmed': {
+    he: 'נמחקת. כל המידע שהוחזק עליך — מספר, שם, והודעות שתוזמנו אליך — הוסר.\n\n' +
+        'שמרנו רק את המספר עצמו ברשימת חסימה, כדי שלא נפנה אליך שוב — גם אם ינסו להוסיף אותך מחדש.',
+    en: 'You have been erased. Everything held about you — your number, your name, and any messages scheduled to you — is gone.\n\n' +
+        'We kept only the number itself, on a block list, so that we never contact you again — even if someone tries to add you back.'
+  },
+  'recipient.greeting': {
+    he: 'שלום! אני {brand}.\nמישהו תזמן עבורך הודעה דרכי, ולכן אנחנו בקשר.\n\n' +
+        'להפסקת הודעות ממני — להשיב "הסר".\n\n' +
+        'ואם בא לך גם לתזמן הודעות בעצמך, אפשר לכתוב "עזרה" ואסביר.',
+    en: 'Hello. I am {brand}.\nSomeone scheduled a message for you through me, which is why we are in touch.\n\n' +
+        'To stop hearing from me, reply "stop".\n\n' +
+        'And if you would like to schedule messages yourself, write "help" and I will explain.'
+  },
+  'consent.clarify': {
+    he: 'התקבלה בקשה לתזמן עבורך הודעה דרך {brand}.\n\n1 — מאשר/ת, אפשר לשלוח לי\n2 — לא מעוניין/ת, אל תפנו אליי שוב',
+    en: 'Someone asked to schedule a message for you through {brand}.\n\n1 — yes, you may send to me\n2 — no, do not contact me again'
   }
 };
 

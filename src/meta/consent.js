@@ -4,6 +4,8 @@ import { sendWhatsAppMessage, sendTemplateMessage } from './sendHandler.js';
 import { isWithinServiceWindow } from './serviceWindow.js';
 import { BRAND } from '../brand.js';
 import { isSuppressed } from '../privacy/erasure.js';
+import { languageForPhone } from '../i18n/language.js';
+import { t } from '../i18n/messages.js';
 
 const TEMPLATE_NAME = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
 const TEMPLATE_LANGUAGE = process.env.META_TEMPLATE_LANGUAGE || 'he';
@@ -54,23 +56,34 @@ export async function requestConsent(userId, phone, senderName = null, recipient
     return false;
   }
 
+  // A recipient never chose a language, so it is guessed from their number.
+  const lang = languageForPhone(normalized);
+
   // Naming the sender is the difference between a message a recipient
   // recognises and one that reads like an unsolicited approach.
-  const who = senderName ? `${senderName} ביקש` : 'התקבלה בקשה';
+  const who = senderName
+    ? t('consent.ask.by', lang, { name: senderName })
+    : t('consent.ask.anonymous', lang);
 
-  const ask =
-    `${who} לתזמן עבורך הודעות דרך ${BRAND}. ` +
-    `להסכמה להשיב א, לסירוב ב — ואז לא נפנה אליך שוב.`;
+  // 1 and 2, because that is what the approved template tells them to answer.
+  // Our own sentence said א and ב, so a recipient outside the window and one
+  // inside it were asked to reply with different things for the same question.
+  const ask = t('consent.ask', lang, { who, brand: BRAND });
 
   try {
     // A recipient who wrote to us recently can be asked in plain text.
     if (await isWithinServiceWindow(normalized)) {
       await sendWhatsAppMessage(normalized, ask);
     } else {
-      // The greeting slot is a name, and we usually have one. Passing the word
-      // "שלום" into a template that already greets produced "שלום שלום".
+      // The template's own body already asks the whole question — greeting,
+      // explanation and the two options. Passing our sentence into its slot
+      // stacked a second consent request inside the first, in different words.
+      // What the slot wants is the one thing the template cannot know: who is
+      // asking. The greeting slot is a name, and we usually have one; the
+      // literal "שלום" we used to pass produced "שלום שלום".
       await sendTemplateMessage(
-        normalized, TEMPLATE_NAME, TEMPLATE_LANGUAGE, [recipientName || 'שלום', ask]
+        normalized, TEMPLATE_NAME, TEMPLATE_LANGUAGE,
+        [recipientName || 'שלום', senderName || 'מישהו']
       );
     }
 
@@ -141,7 +154,7 @@ export async function handleConsentReply(phone, text) {
         WHERE phone_number = $1`,
       [normalized]
     );
-    await sendWhatsAppMessage(normalized, 'הוסרת. לא נשלח אליך הודעות נוספות.');
+    await sendWhatsAppMessage(normalized, t('consent.declined', languageForPhone(normalized)));
     return true;
   }
 
@@ -163,7 +176,7 @@ export async function handleConsentReply(phone, text) {
       [normalized]
     );
     console.log(`✅ Consent granted by ${normalized}; released ${released.rowCount} message(s)`);
-    await sendWhatsAppMessage(normalized, 'תודה! ההודעות שתוזמנו עבורך יישלחו במועדן.');
+    await sendWhatsAppMessage(normalized, t('consent.granted', languageForPhone(normalized)));
   } else {
     const cancelled = await pool.query(
       `UPDATE active_queue SET status = 'cancelled', updated_at = NOW()
@@ -172,7 +185,7 @@ export async function handleConsentReply(phone, text) {
       [normalized]
     );
     console.log(`🚫 Consent declined by ${normalized}; cancelled ${cancelled.rowCount} message(s)`);
-    await sendWhatsAppMessage(normalized, 'הוסרת. לא נשלח אליך הודעות נוספות.');
+    await sendWhatsAppMessage(normalized, t('consent.declined', languageForPhone(normalized)));
   }
 
   return true;

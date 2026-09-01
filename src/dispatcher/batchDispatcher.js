@@ -12,8 +12,19 @@ const RETRY_DELAYS = [5000, 15000, 60000]; // 5s, 15s, 60s backoff
 // Body: "שלום {{1}}, תזכורת להודעה: {{2}} (נשלח מ-Cue)"
 // The brand appears inside that approved body, so renaming it means
 // re-submitting the template — see src/brand.js.
-const TEMPLATE_NAME = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
 const TEMPLATE_LANGUAGE = process.env.META_TEMPLATE_LANGUAGE || 'he';
+
+// Delivering a message and asking permission to send one are different
+// sentences, and they need different templates. They shared one, worded as a
+// consent request — so a delivered message landed inside "reply 1 to receive
+// the message", quoting the message the recipient was already reading.
+//
+// Until the delivery template is approved this falls back to the old one and
+// the leak stands, which is why startup says so out loud.
+const CONSENT_TEMPLATE = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
+const TEMPLATE_NAME = process.env.META_DELIVERY_TEMPLATE_NAME || CONSENT_TEMPLATE;
+
+export const deliveryTemplateIsShared = !process.env.META_DELIVERY_TEMPLATE_NAME;
 
 /**
  * Main dispatcher: Batch process all pending messages due for delivery.

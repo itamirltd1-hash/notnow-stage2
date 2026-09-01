@@ -7,7 +7,7 @@ import { extractWhatsappUserContext } from '../middleware/whatsappUserContext.js
 import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender, normalizePhoneNumber, findContactsByName } from '../auth/userContextExtractor.js';
 import { recordInboundMessage } from '../meta/serviceWindow.js';
 import { deliverDeferredMedia } from '../meta/deferredMedia.js';
-import { isErasureRequest, eraseByPhone, ERASURE_CONFIRMATION } from '../privacy/erasure.js';
+import { isErasureRequest, eraseByPhone, erasureConfirmation } from '../privacy/erasure.js';
 import { isTermsAcceptance, hasAcceptedTerms, recordAcceptance, termsPrompt, acceptanceConfirmation } from '../legal/terms.js';
 import { getConsentStatus, requestConsent, handleConsentReply } from '../meta/consent.js';
 import { findGroupsByName, getGroupMembers, listGroups, removeGroupMember } from '../groups/groupService.js';
@@ -40,7 +40,7 @@ import { downloadMedia } from '../meta/mediaDownload.js';
 import { transcribeAudio, isTranscriptionAvailable } from '../llm/transcriber.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
 import {
-  detectInitialLanguage, getLanguage, setLanguage, parseLanguageCommand
+  detectInitialLanguage, getLanguage, setLanguage, parseLanguageCommand, languageForPhone
 } from '../i18n/language.js';
 import { t, mediaSubject, formatWhen } from '../i18n/messages.js';
 
@@ -131,7 +131,7 @@ router.post('/webhook', async (req, res) => {
     // Asking to be deleted must not first create an account for the person
     // asking, so it is handled before identity like consent is.
     if (type === 'text' && isErasureRequest(text)) {
-      await sendWhatsAppMessage(phone, ERASURE_CONFIRMATION);
+      await sendWhatsAppMessage(phone, erasureConfirmation(phone));
       await eraseByPhone(phone);
       return;
     }
@@ -148,7 +148,7 @@ router.post('/webhook', async (req, res) => {
     // Someone who was asked for permission and answered with something other
     // than yes/no is still in that conversation. Re-ask; don't onboard them.
     if (!req.userId && type === 'text' && await isPendingRecipient(phone)) {
-      await sendWhatsAppMessage(phone, consentClarification());
+      await sendWhatsAppMessage(phone, consentClarification(languageForPhone(phone)));
       return;
     }
 
@@ -181,7 +181,7 @@ router.post('/webhook', async (req, res) => {
 
       await sendWhatsAppMessage(
         phone,
-        asRecipient ? recipientGreeting()
+        asRecipient ? recipientGreeting(languageForPhone(phone))
           : isNewUser ? welcomeMessage(profileName, lang)
           : helpMessage()
       );

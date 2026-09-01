@@ -87,13 +87,8 @@ export function helpMessage() {
  * asked — but they should still learn how to stop, and how to start if they
  * do want it.
  */
-export function recipientGreeting() {
-  return (
-    'שלום! אני Cue.\n' +
-    'מישהו תזמן עבורך הודעה דרכי, ולכן אנחנו בקשר.\n\n' +
-    'להפסקת הודעות ממני — להשיב "הסר".\n\n' +
-    'ואם בא לך גם לתזמן הודעות בעצמך, אפשר לכתוב "עזרה" ואסביר.'
-  );
+export function recipientGreeting(lang = 'he') {
+  return t('recipient.greeting', lang, { brand: BRAND });
 }
 
 /**
@@ -101,11 +96,6 @@ export function recipientGreeting() {
  * They are mid-conversation about one specific question — a product tour here
  * would answer a question they never asked.
  */
-export function consentClarification() {
-  return (
-    `התקבלה בקשה לתזמן עבורך הודעה דרך ${BRAND}.\n\n` +
-    'א. מאשר/ת — אפשר לשלוח לי\n' +
-    'ב. לא מעוניין/ת — אל תפנו אליי שוב\n\n' +
-    'להשיב באות.'
-  );
+export function consentClarification(lang = 'he') {
+  return t('consent.clarify', lang, { brand: BRAND });
 }

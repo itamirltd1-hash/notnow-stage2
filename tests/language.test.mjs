@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseLanguageCommand, detectInitialLanguage } from '../src/i18n/language.js';
 import {
-  t, missingTranslations, SUPPORTED_LANGUAGES, mediaSubject, formatWhen
+  parseLanguageCommand, detectInitialLanguage, languageForPhone
+} from '../src/i18n/language.js';
+import {
+  t, missingTranslations, SUPPORTED_LANGUAGES, mediaSubject, formatWhen, allKeys
 } from '../src/i18n/messages.js';
 
 const SPANISH = { he: 'ספרדית', en: 'Spanish' };
@@ -154,8 +156,39 @@ test('a confirmation reads correctly in both languages', () => {
 
 test('every placeholder in a string is one the other language also uses', () => {
   const names = s => [...s.matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort();
-  for (const key of ['schedule.confirmed', 'schedule.confirmed.body',
-                     'schedule.group', 'schedule.awaiting', 'schedule.declined']) {
+  for (const key of allKeys()) {
     assert.deepEqual(names(t(key, 'he')), names(t(key, 'en')), key);
+  }
+});
+
+// A recipient never chose a language — they never signed up.
+test('a recipient is addressed in the language their number suggests', () => {
+  assert.equal(languageForPhone('+972507575860'), 'he');
+  assert.equal(languageForPhone('972-50-757-5860'), 'he');
+  assert.equal(languageForPhone('0507575860'), 'he');
+  assert.equal(languageForPhone('00972507575860'), 'he');
+  assert.equal(languageForPhone('+14155550123'), 'en');
+  assert.equal(languageForPhone('+442071234567'), 'en');
+  assert.equal(languageForPhone(null), 'he');
+});
+
+// Everything a recipient reads, they read without ever having opted in.
+test('every recipient-facing string exists in English', () => {
+  for (const key of [
+    'consent.ask', 'consent.ask.by', 'consent.ask.anonymous',
+    'consent.granted', 'consent.declined', 'consent.clarify',
+    'recipient.greeting', 'erasure.confirmed'
+  ]) {
+    assert.notEqual(t(key, 'en'), t(key, 'he'), key);
+    assert.doesNotMatch(t(key, 'en'), /[֐-׿]/, `${key} still has Hebrew`);
+  }
+});
+
+test('both consent wordings offer the same two options the template does', () => {
+  for (const lang of SUPPORTED_LANGUAGES) {
+    for (const key of ['consent.ask', 'consent.clarify']) {
+      assert.match(t(key, lang), /\n1 —/, `${key}/${lang}`);
+      assert.match(t(key, lang), /\n2 —/, `${key}/${lang}`);
+    }
   }
 });

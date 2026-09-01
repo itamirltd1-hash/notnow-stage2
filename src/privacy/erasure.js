@@ -1,5 +1,7 @@
 import pool from '../db/pool.js';
 import { normalizePhoneNumber } from '../auth/userContextExtractor.js';
+import { languageForPhone } from '../i18n/language.js';
+import { t } from '../i18n/messages.js';
 
 // Phrased as people phrase it, not as a policy names it.
 const ERASE = /^\s*(?:מחק|תמחק|מחקו|תמחקו|הסר\s+לגמרי|למחוק)\s*(?:אותי|את\s+(?:כל\s+)?(?:המידע|הפרטים|הנתונים)\s*(?:שלי)?)\s*[!.]?\s*$/;
@@ -97,7 +99,10 @@ export async function isSuppressed(phone) {
   }
 }
 
-export const ERASURE_CONFIRMATION =
-  'נמחקת. כל המידע שהוחזק עליך — מספר, שם, והודעות שתוזמנו אליך — הוסר.\n\n' +
-  'שמרנו רק את המספר עצמו ברשימת חסימה, כדי שלא נפנה אליך שוב — גם אם ' +
-  'ינסו להוסיף אותך מחדש.';
+/**
+ * Read by someone who is leaving, so it says exactly what was removed and
+ * what was kept — and in the language their number suggests they read.
+ */
+export function erasureConfirmation(phone) {
+  return t('erasure.confirmed', languageForPhone(phone));
+}

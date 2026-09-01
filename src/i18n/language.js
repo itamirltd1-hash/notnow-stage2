@@ -21,6 +21,29 @@ export function detectInitialLanguage(text) {
   return latin >= 2 ? 'en' : DEFAULT_LANGUAGE;
 }
 
+/**
+ * The language to address a recipient in.
+ *
+ * A recipient never chose one — they never signed up. The country code is the
+ * only signal available before they answer, and it is a better guess than
+ * always reaching for Hebrew: an Israeli number gets Hebrew, anyone else gets
+ * English, which more people abroad can read than can read Hebrew.
+ */
+export function languageForPhone(phone) {
+  if (!phone) return DEFAULT_LANGUAGE;
+
+  // Callers hand this every shape the codebase holds: +972…, 972…, 0…, and
+  // the same again with dashes. Requiring one of them is how a Hebrew
+  // speaker gets addressed in English.
+  const digits = String(phone)
+    .replace(/[^\d+]/g, '')
+    .replace(/^\+/, '')
+    .replace(/^00/, '');
+
+  if (digits.startsWith('0')) return 'he'; // a local Israeli number
+  return digits.startsWith('972') ? 'he' : 'en';
+}
+
 export async function getLanguage(userId) {
   if (!userId) return DEFAULT_LANGUAGE;
 
