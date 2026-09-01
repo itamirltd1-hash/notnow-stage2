@@ -97,7 +97,7 @@ router.post('/webhook', async (req, res) => {
       return; // Not a text message, skip
     }
 
-    const { phone, type, mediaId, profileName } = messageData;
+    const { phone, type, mediaId, profileName, businessPhoneId } = messageData;
     let { text } = messageData;
 
     // Sanitize phone number (should be digits and +)
@@ -112,7 +112,7 @@ router.post('/webhook', async (req, res) => {
     }
 
     // This inbound message opens a 24-hour window for free-form replies
-    await recordInboundMessage(phone);
+    await recordInboundMessage(phone, businessPhoneId);
 
     // Which is exactly when a file we promised them can finally be sent.
     await deliverDeferredMedia(phone);
