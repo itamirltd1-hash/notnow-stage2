@@ -80,10 +80,14 @@ export async function requestConsent(userId, phone, senderName = null, recipient
       // What the slot wants is the one thing the template cannot know: who is
       // asking. The greeting slot is a name, and we usually have one; the
       // literal "שלום" we used to pass produced "שלום שלום".
+      // A real consent template asks the question in its own body, and its
+      // slot wants the one thing it cannot know: who is asking. Falling back
+      // to the delivery template means no question is asked at all unless we
+      // pass ours — a bare name there reads as a message from a stranger.
       const template = resolveTemplate('consent', lang);
       await sendTemplateMessage(
         normalized, template.name, template.language,
-        [recipientName || 'שלום', senderName || 'מישהו']
+        [recipientName || 'שלום', template.carriesTheQuestion ? (senderName || 'מישהו') : ask]
       );
     }
 
