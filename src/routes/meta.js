@@ -267,7 +267,7 @@ router.post('/webhook', async (req, res) => {
         return;
       }
 
-      const faq = answerServiceQuestion(text);
+      const faq = answerServiceQuestion(text, lang);
       if (faq) {
         await sendWhatsAppMessage(phone, faq);
         return;

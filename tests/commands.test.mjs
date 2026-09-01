@@ -217,3 +217,72 @@ test('an English sentence that merely starts with a verb is not a group command'
   assert.equal(looksLikeGroupCommand('add Dana to the group testers'), true);
   assert.equal(looksLikeGroupCommand('הוסף משהו'), true);
 });
+
+// ── Ambiguous hours ───────────────────────────────────────────────────────
+import { detectAmbiguousHour } from '../src/scheduling/ambiguousHour.js';
+
+test('a bare hour is ambiguous in either language', () => {
+  for (const text of ['שלח לדני מחר ב-8', 'send to Dan tomorrow at 8',
+                      'at 8:30', "at 8 o'clock", '@8']) {
+    assert.ok(detectAmbiguousHour(text), text);
+  }
+  assert.deepEqual(detectAmbiguousHour('send to Dan tomorrow at 8'),
+    { hour: 8, minutes: 0, morning: 8, evening: 20 });
+});
+
+test('an hour that says which half of the day is not asked about', () => {
+  for (const text of [
+    'מחר ב-8 בבוקר', 'tomorrow at 8 in the morning', 'tomorrow at 8pm',
+    'tonight at 8', 'tomorrow morning at 8', 'tomorrow at 22:34',
+    'send at 12', 'remind me in 2 hours', 'at noon'
+  ]) {
+    assert.equal(detectAmbiguousHour(text), null, text);
+  }
+});
+
+// A time inside the message is one the sender is telling someone else about.
+// Reading it as the schedule sends the message twelve hours from where they
+// meant, or asks about an hour they never mentioned.
+test('a time inside the message body is not the schedule', () => {
+  assert.deepEqual(
+    detectAmbiguousHour('שלח לדני מחר ב-9 "נתראה ב-8"'),
+    { hour: 9, minutes: 0, morning: 9, evening: 21 }
+  );
+  assert.deepEqual(
+    detectAmbiguousHour('send to Dan "meet me at 8" tomorrow at 9'),
+    { hour: 9, minutes: 0, morning: 9, evening: 21 }
+  );
+  // "good morning" is the message; it does not mean the send is in the morning.
+  assert.ok(detectAmbiguousHour('send "good morning" tomorrow at 8'));
+});
+
+// ── The questions people ask ──────────────────────────────────────────────
+import { answerServiceQuestion } from '../src/meta/faq.js';
+
+test('the same question is answered in whichever language it was asked', () => {
+  const pairs = [
+    ['איך עובד מנגנון ההסכמה', 'how does consent work'],
+    ['למה ההודעה עדיין ממתינה', 'why is my message still waiting'],
+    ['מה זה קבוצה, זה צאט קבוצתי?', 'is a group a whatsapp group chat'],
+    ['איך אני מבטל הודעה', 'how can i cancel a scheduled message'],
+    ['האם הנמען יראה שזה בוט', 'will the recipient know it is automated']
+  ];
+
+  for (const [he, en] of pairs) {
+    const hebrew = answerServiceQuestion(he, 'he');
+    const english = answerServiceQuestion(en, 'en');
+    assert.ok(hebrew, he);
+    assert.ok(english, en);
+    assert.doesNotMatch(english, /[֐-׿]/, en);
+  }
+});
+
+test('an ordinary request is not mistaken for a question about the service', () => {
+  for (const text of [
+    'שלח לדני 0501234567 מחר ב-9:00 "נתראה"',
+    'send to Danny 0501234567 tomorrow at 9:00 "see you"',
+    'תודה'
+  ]) {
+    assert.equal(answerServiceQuestion(text, 'he'), null, text);
+  }
+});

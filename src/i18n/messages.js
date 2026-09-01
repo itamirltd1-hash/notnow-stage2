@@ -135,6 +135,46 @@ const STRINGS = {
   },
   'groups.unnamed': { he: 'קבוצה', en: 'group' },
 
+  // ── The questions people actually ask ─────────────────────────────────
+  // Plain language: someone asking why their message is waiting does not want
+  // the words "opt-in", "template" or "24-hour window".
+  'faq.consent': {
+    he: 'לפני שאני שולח למישהו בפעם הראשונה, אני שולח לו הודעה קצרה ושואל אם הוא מסכים לקבל.\n\n' +
+        'ההודעה שתזמנת ממתינה עד שהוא עונה. אם הוא מאשר — היא נשלחת במועד שקבעת. ' +
+        'אם הוא מסרב — היא לא נשלחת, ולא נפנה אליו יותר.\n\nזה מגן גם עליו וגם על המספר שממנו אני שולח.',
+    en: 'Before I write to someone for the first time, I send them a short message asking whether they agree to hear from me.\n\n' +
+        'Your scheduled message waits until they answer. If they agree, it goes at the time you set. ' +
+        'If they refuse, it is not sent and we never contact them again.\n\nThat protects them, and it protects the number I send from.'
+  },
+  'faq.waiting': {
+    he: 'הודעה יכולה להמתין משתי סיבות:\n\n' +
+        'המועד שקבעת עוד לא הגיע — אפשר לראות הכל עם "מה בתור".\n\n' +
+        'או שהנמען עדיין לא אישר לקבל ממני הודעות. במקרה כזה מופיע לידה "ממתינה לאישור הנמען".',
+    en: 'A message can be waiting for two reasons:\n\n' +
+        'The time you set has not arrived yet — "what is in the queue" shows everything.\n\n' +
+        'Or the recipient has not yet agreed to hear from me. That one is marked "waiting for the recipient to agree".'
+  },
+  'faq.groups': {
+    he: 'קבוצה אצלי היא רשימה שמורה, לא צ\'אט קבוצתי בוואטסאפ.\n\n' +
+        'כשמתזמנים לקבוצה, כל אחד מקבל הודעה אישית נפרדת. הם לא רואים זה את זה ' +
+        'ולא יודעים שההודעה נשלחה לעוד מישהו.',
+    en: 'A group here is a saved list, not a WhatsApp group chat.\n\n' +
+        'When you schedule to a group, each person gets their own separate message. They cannot see each other ' +
+        'and have no way of knowing the message went to anyone else.'
+  },
+  'faq.cancel': {
+    he: 'כותבים "מה בתור" כדי לראות את כל מה שממתין, ואז "בטל 2" לפי המספר ברשימה.\n\n' +
+        '"בטל הכל" מבטל את כל מה שתוזמן. הודעה שכבר נשלחה אי אפשר להחזיר.',
+    en: 'Write "what is in the queue" to see everything waiting, then "cancel 2" by its number in the list.\n\n' +
+        '"cancel all" cancels everything scheduled. A message already sent cannot be taken back.'
+  },
+  'faq.automated': {
+    he: 'ההודעה מגיעה מהמספר העסקי שלנו, לא מהמספר הפרטי שלך.\n\n' +
+        'הנמען רואה הודעה רגילה בוואטסאפ. אין שום סימן שהיא תוזמנה מראש.',
+    en: 'The message arrives from our business number, not from your personal one.\n\n' +
+        'The recipient sees an ordinary WhatsApp message. Nothing marks it as having been scheduled in advance.'
+  },
+
   // ── Group management ──────────────────────────────────────────────────
   // Every reply names exactly what changed: "done" leaves the sender guessing
   // whether the right person was removed from the right list.

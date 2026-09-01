@@ -1,47 +1,54 @@
+import { t } from '../i18n/messages.js';
+
 /**
  * Answers to the questions people actually ask about how the bot behaves.
- * Plain language: someone asking why their message is waiting does not want
- * the words "opt-in", "template" or "24-hour window".
  *
  * Matching requires terms to be present, not to appear in a given order:
  * "איך פועל מנגנון ההסכמה" and "מנגנון ההסכמה — איך זה עובד" are one question,
- * and Hebrew word order is loose enough that ordered patterns miss half of it.
+ * and word order in both languages is loose enough that an ordered pattern
+ * misses half of it.
+ *
+ * Each entry needs every one of its patterns to match. That pairing is what
+ * keeps a single common word from answering the wrong question: "group" alone
+ * says nothing, "group" plus "how does it work" says a great deal.
  */
 const ANSWERS = [
   {
-    all: [/הסכמ|אישור|מאשר|מסכים/, /איך|למה|מה\b|פועל|עובד|צריך|נדרש|זה/],
-    answer:
-      'לפני שאני שולח למישהו בפעם הראשונה, אני שולח לו הודעה קצרה ושואל אם הוא מסכים לקבל.\n\n' +
-      'ההודעה שתזמנת ממתינה עד שהוא עונה. אם הוא מאשר — היא נשלחת במועד שקבעת. ' +
-      'אם הוא מסרב — היא לא נשלחת, ולא נפנה אליו יותר.\n\n' +
-      'זה מגן גם עליו וגם על המספר שממנו אני שולח.'
+    key: 'faq.consent',
+    all: [
+      /הסכמ|אישור|מאשר|מסכים|consent|permission|approve|agree|opt.?in/i,
+      /איך|למה|מה\b|פועל|עובד|צריך|נדרש|זה|how|why|what|work|need|does/i
+    ]
   },
   {
-    all: [/הודעה|הודעות/, /לא\s+נשלח|ממתינ|תקוע|מחכ|מה\s+קורה|למה/],
-    answer:
-      'הודעה יכולה להמתין משתי סיבות:\n\n' +
-      'המועד שקבעת עוד לא הגיע — אפשר לראות הכל עם "מה בתור".\n\n' +
-      'או שהנמען עדיין לא אישר לקבל ממני הודעות. במקרה כזה מופיע לידה ' +
-      '"ממתינה לאישור הנמען".'
+    key: 'faq.waiting',
+    all: [
+      /הודעה|הודעות|message|messages/i,
+      /לא\s+נשלח|ממתינ|תקוע|מחכ|מה\s+קורה|למה|waiting|stuck|pending|not\s+sent|why|held/i
+    ]
   },
   {
-    all: [/קבוצ/, /צ'?אט|וואטסאפ|whatsapp|איך|מה\b|עובד|פועל|זה/i],
-    answer:
-      'קבוצה אצלי היא רשימה שמורה, לא צ\'אט קבוצתי בוואטסאפ.\n\n' +
-      'כשמתזמנים לקבוצה, כל אחד מקבל הודעה אישית נפרדת. הם לא רואים זה את זה ' +
-      'ולא יודעים שההודעה נשלחה לעוד מישהו.'
+    key: 'faq.groups',
+    all: [
+      /קבוצ|group/i,
+      /צ'?אט|וואטסאפ|whatsapp|איך|מה\b|עובד|פועל|זה|chat|how|what|work|mean|does/i
+    ]
   },
   {
-    all: [/לבטל|למחוק|ביטול/, /הודעה|תזמון|איך|אפשר/],
-    answer:
-      'כותבים "מה בתור" כדי לראות את כל מה שממתין, ואז "בטל 2" לפי המספר ברשימה.\n\n' +
-      '"בטל הכל" מבטל את כל מה שתוזמן. הודעה שכבר נשלחה אי אפשר להחזיר.'
+    key: 'faq.cancel',
+    all: [
+      // Hebrew verbs carry their prefix, so "לבטל" and "מבטל" are different
+      // strings for the same act — both have to be here.
+      /לבטל|למחוק|ביטול|מבטל|מוחק|תבטל|cancel|delete|undo|stop\s+a/i,
+      /הודעה|תזמון|איך|אפשר|message|scheduled|how|can\s+i/i
+    ]
   },
   {
-    all: [/בוט|אוטומט|מתוזמנ|מראש/, /יראה|רואה|יודע|ידע|יבין|מזהה|האם|יראו/],
-    answer:
-      'ההודעה מגיעה מהמספר העסקי שלנו, לא מהמספר הפרטי שלך.\n\n' +
-      'הנמען רואה הודעה רגילה בוואטסאפ. אין שום סימן שהיא תוזמנה מראש.'
+    key: 'faq.automated',
+    all: [
+      /בוט|אוטומט|מתוזמנ|מראש|bot|automated|automatic|scheduled|robot/i,
+      /יראה|רואה|יודע|ידע|יבין|מזהה|האם|יראו|see|know|tell|notice|realise|realize|does|will/i
+    ]
   }
 ];
 
@@ -49,9 +56,9 @@ const ANSWERS = [
  * Returns a plain-language answer, or null when this is not one of these
  * questions and should carry on to the model.
  */
-export function answerServiceQuestion(text) {
-  for (const { all, answer } of ANSWERS) {
-    if (all.every(re => re.test(text))) return answer;
+export function answerServiceQuestion(text, lang = 'he') {
+  for (const { all, key } of ANSWERS) {
+    if (all.every(re => re.test(text))) return t(key, lang);
   }
   return null;
 }

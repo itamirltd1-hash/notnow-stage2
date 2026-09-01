@@ -2,11 +2,27 @@ import pool from '../db/pool.js';
 
 // Anchored on digits rather than Hebrew words. Word-anchored patterns have
 // broken three times on this project; a numeral is a numeral.
-const STATED_HOUR = /(?:^|\s)ב[-־]?(\d{1,2})(?::(\d{2}))?(?=\s|$|[.,!?])/;
+//
+// Hebrew glues the preposition to the hour ("ב-8"); English separates it
+// ("at 8"). Both are here rather than in two patterns, so neither can be
+// changed without the other being in view.
+const STATED_HOUR =
+  /(?:^|\s)(?:ב[-־]?|at\s+|@\s*)(\d{1,2})(?::(\d{2}))?(?=\s|$|[.,!?]|\s*o'?clock)/i;
 
 // If any of these appear, the person already said which half of the day.
+// The English words are the phrases, not the bare nouns: "morning" on its own
+// is far more likely to be part of the message than part of the time.
 const PERIOD_STATED =
-  /בבוקר|לפנות\s+בוקר|בצהריים|אחה"?צ|אחר\s+הצהריים|בערב|בלילה|לפנות\s+ערב|am\b|pm\b/i;
+  /בבוקר|לפנות\s+בוקר|בצהריים|אחה"?צ|אחר\s+הצהריים|בערב|בלילה|לפנות\s+ערב|am\b|pm\b|in\s+the\s+(?:morning|afternoon|evening)|at\s+night|tonight|this\s+(?:morning|afternoon|evening)|tomorrow\s+(?:morning|afternoon|evening|night)|midnight|mid-?day|at\s+noon/i;
+
+// Everything between quotes is the message, not the schedule. "שלח 'בוקר טוב'
+// מחר ב-8" says nothing about mornings, and 'meet me at 8' inside a message
+// body is a time the sender is telling someone else about, not one to act on.
+const QUOTED = /(["'״“”'']).*?\1/g;
+
+function scheduleWordsOnly(text) {
+  return text.replace(QUOTED, ' ');
+}
 
 /**
  * Did they name an hour that could be either half of the day?
@@ -15,9 +31,11 @@ const PERIOD_STATED =
  * or null when there is nothing to ask about.
  */
 export function detectAmbiguousHour(text) {
-  if (PERIOD_STATED.test(text)) return null;
+  const schedule = scheduleWordsOnly(text || '');
 
-  const match = text.match(STATED_HOUR);
+  if (PERIOD_STATED.test(schedule)) return null;
+
+  const match = schedule.match(STATED_HOUR);
   if (!match) return null;
 
   const hour = Number(match[1]);

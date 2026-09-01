@@ -24,7 +24,8 @@ const CONVERTED = [
   'src/billing/quotaCommands.js',
   'src/legal/terms.js',
   'src/auth/displayName.js',
-  'src/groups/groupCommands.js'
+  'src/groups/groupCommands.js',
+  'src/meta/faq.js'
 ];
 
 // Comments explain the Hebrew the code handles; they are not sent to anyone.
