@@ -31,6 +31,7 @@ import {
 import {
   detectAmbiguousHour, recallHour, rememberHour, withHour, formatHour
 } from '../scheduling/ambiguousHour.js';
+import { unusedNumbers } from '../scheduling/extraRecipients.js';
 import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
 import { isExempt } from '../billing/exemptions.js';
 import { isQuotaQuestion, describeQuota, quotaWarningLine } from '../billing/quotaCommands.js';
@@ -466,7 +467,7 @@ router.post('/webhook', async (req, res) => {
           break;
         }
 
-        await handleScheduleMessage(req.userId, phone, entities);
+        await handleScheduleMessage(req.userId, phone, entities, null, null, null, text);
         break;
       }
 
@@ -820,7 +821,10 @@ async function resolveRecipients(userId, entities) {
  * into an individual 1-on-1 message per member, each with its own queue row,
  * consent state and delivery status.
  */
-async function handleScheduleMessage(userId, senderPhone, entities, mediaId = null, mediaType = null, mediaFilename = null) {
+async function handleScheduleMessage(
+  userId, senderPhone, entities, mediaId = null, mediaType = null,
+  mediaFilename = null, originalText = null
+) {
   try {
     const { message_body, scheduled_timestamp, delivery_channel } = entities;
     const lang = await getLanguage(userId);
@@ -997,6 +1001,17 @@ async function handleScheduleMessage(userId, senderPhone, entities, mediaId = nu
     // as a message of its own.
     const warning = billed > 0 ? await quotaWarningLine(userId, senderPhone) : null;
 
+    // A second number in the request was parsed away, and the confirmation
+    // names only the first — so the sender has no reason to think anyone was
+    // left out. Reported, never sent to: a number inside a message body is
+    // content, and writing to it would be worse than saying nothing.
+    const leftOut = group ? [] : unusedNumbers(
+      originalText, recipients.map(r => r.phone), senderPhone, message_body
+    );
+    const alsoSeen = leftOut.length > 0
+      ? t('schedule.otherNumbers', lang, { numbers: leftOut.join(', ') })
+      : '';
+
     await sendWhatsAppMessage(
       senderPhone,
       buildScheduleConfirmation({
@@ -1007,7 +1022,7 @@ async function handleScheduleMessage(userId, senderPhone, entities, mediaId = nu
         body: message_body,
         lang
       })
-        + (warning || '')
+        + alsoSeen + (warning || '')
     );
 
     console.log(

@@ -365,6 +365,15 @@ const STRINGS = {
     he: '\n\nאין לי מספר שמור עבור {name}. אפשר לשלוח פעם אחת עם המספר, ואשמור אותו.',
     en: '\n\nI have no number saved for {name}. Send it once with the number and I will keep it.'
   },
+  // A request naming two people is parsed into one, and the other number is
+  // dropped without a word. Saying so is the whole of the fix — sending to a
+  // number the parser passed over would be worse than saying nothing.
+  'schedule.otherNumbers': {
+    he: '\n\nראיתי בהודעה עוד מספר ({numbers}) ולא שלחתי אליו. אני מתזמן לנמען אחד בכל פעם — ' +
+        'לשליחה לכמה אנשים יחד אפשר ליצור קבוצה: צור קבוצה [שם]',
+    en: '\n\nI saw another number in your message ({numbers}) and did not send to it. I schedule to ' +
+        'one recipient at a time — to reach several people at once, save a group: create group [name]'
+  },
   'schedule.failed': {
     he: 'לא הצלחתי לתזמן את ההודעה. אפשר לנסות שוב.',
     en: 'I could not schedule the message. Please try again.'
