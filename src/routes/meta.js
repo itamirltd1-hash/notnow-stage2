@@ -39,6 +39,10 @@ import { answerProductQuestion } from '../llm/answerQuestion.js';
 import { downloadMedia } from '../meta/mediaDownload.js';
 import { transcribeAudio, isTranscriptionAvailable } from '../llm/transcriber.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
+import {
+  detectInitialLanguage, getLanguage, setLanguage, parseLanguageCommand
+} from '../i18n/language.js';
+import { t } from '../i18n/messages.js';
 
 const router = express.Router();
 
@@ -151,7 +155,7 @@ router.post('/webhook', async (req, res) => {
     let isNewUser = false;
     if (!req.userId) {
       console.log(`🆕 Auto-registering new sender ${phone}`);
-      const newUser = await autoRegisterSender(phone);
+      const newUser = await autoRegisterSender(phone, detectInitialLanguage(text));
       if (!newUser) {
         await sendWhatsAppMessage(phone, 'לא הצלחתי לרשום את המספר שלך. אפשר לנסות שוב בעוד רגע.');
         return;
@@ -164,6 +168,10 @@ router.post('/webhook', async (req, res) => {
     // Keep the profile name current unless the user has picked their own.
     await rememberProfileName(req.userId, profileName);
 
+    // Decided once at registration, changed only when asked. Every reply below
+    // is written in this language.
+    let lang = await getLanguage(req.userId);
+
     // A first message, a greeting or a request for help are all answered from
     // static text — no model call, no "לא הבנתי" as an opening impression.
     if (type === 'text' && (isNewUser || isGreeting(text))) {
@@ -174,10 +182,44 @@ router.post('/webhook', async (req, res) => {
       await sendWhatsAppMessage(
         phone,
         asRecipient ? recipientGreeting()
-          : isNewUser ? welcomeMessage(profileName)
+          : isNewUser ? welcomeMessage(profileName, lang)
           : helpMessage()
       );
       return;
+    }
+
+    // "speak English" has to work while the bot is answering in Hebrew, and
+    // "דבר עברית" while it is answering in English — otherwise a wrong guess
+    // at registration is a dead end.
+    const languageCommand = type === 'text' ? parseLanguageCommand(text) : null;
+    if (languageCommand) {
+      // Someone who was just asked "what should the message say?" and answered
+      // "אנגלית" is naming a message, not a language. Only looked up once a
+      // language command has matched, so the ordinary path pays nothing.
+      const held = await peekPendingRequest(phone);
+      const answeringWithBody =
+        held?.is_fresh && !held.entities?.message_body && !held.media_id;
+
+      if (!answeringWithBody) {
+        if (languageCommand.unsupported) {
+          await sendWhatsAppMessage(
+            phone,
+            t('language.unsupported', lang, { language: languageCommand.unsupported[lang] })
+          );
+          return;
+        }
+
+        const already = languageCommand.language === lang;
+        if (!already) {
+          await setLanguage(req.userId, languageCommand.language);
+          lang = languageCommand.language;
+        }
+        await sendWhatsAppMessage(
+          phone,
+          t(already ? 'language.already' : 'language.switched', lang)
+        );
+        return;
+      }
     }
 
     if (type === 'text' && isTermsAcceptance(text) && !(await hasAcceptedTerms(req.userId))) {

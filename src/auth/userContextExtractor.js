@@ -32,18 +32,22 @@ export async function getUserByPhone(phoneNumber) {
  * Auto-onboard a WhatsApp sender we've never seen before.
  * Creates a user (identified by phone) plus a self-contact so future
  * lookups in getUserByPhone succeed.
+ *
+ * The language of their first message is the only language signal we will
+ * ever get without asking, so it is recorded here — and only here. On
+ * conflict it is left alone: an existing user's language is theirs to change.
  */
-export async function autoRegisterSender(phoneNumber) {
+export async function autoRegisterSender(phoneNumber, language = 'he') {
   const normalizedPhone = normalizePhoneNumber(phoneNumber);
   if (!normalizedPhone) return null;
 
   const email = `${normalizedPhone.replace('+', '')}@whatsapp.notnow.local`;
 
   const userResult = await pool.query(
-    `INSERT INTO users (email, tier) VALUES ($1, 'FREE')
+    `INSERT INTO users (email, tier, language) VALUES ($1, 'FREE', $2)
      ON CONFLICT (email) DO UPDATE SET updated_at = NOW()
-     RETURNING user_id, email, tier`,
-    [email]
+     RETURNING user_id, email, tier, language`,
+    [email, language]
   );
   const user = userResult.rows[0];
 

@@ -1,4 +1,5 @@
 import { BRAND } from '../brand.js';
+import { t } from '../i18n/messages.js';
 
 // A first message used to cost a model call and come back as "לא הבנתי" —
 // the worst possible introduction. These are matched before anything else.
@@ -29,7 +30,7 @@ export function courtesyReply() {
 /**
  * Shown once, the first time a number ever writes to the bot.
  */
-export function welcomeMessage(profileName = null) {
+export function welcomeMessage(profileName = null, lang = 'he') {
   // Say up front which name recipients will see. Finding that out only after
   // five clients received "🔥BOSS🔥 ביקש..." is too late.
   const naming = profileName
@@ -48,7 +49,8 @@ export function welcomeMessage(profileName = null) {
     '• צור קבוצה טסטרים\n' +
     '• הוסף לטסטרים 0501111111 דנה\n' +
     '• תשלח לקבוצת טסטרים מחר ב-10 "בוקר טוב"\n\n' +
-    'לרשימת הפקודות המלאה — לכתוב "עזרה".' + naming
+    'לרשימת הפקודות המלאה — לכתוב "עזרה".' + naming +
+    `\n\n${t('language.hint', lang)}`
   );
 }
 
