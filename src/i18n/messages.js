@@ -32,8 +32,76 @@ const STRINGS = {
   'language.hint': {
     he: 'אני עונה בעברית. To switch to English, write "speak English".',
     en: 'I reply in English. למעבר לעברית — לכתוב "דבר עברית".'
+  },
+
+  // ── Scheduling confirmations ──────────────────────────────────────────
+  // Written here rather than asked of the model, which stated the same
+  // scheduled time as 20:14 in one message and 17:15 in the next — the
+  // second in UTC — and reads to the user as a bot on the wrong clock.
+  'schedule.confirmed': {
+    he: 'קיבלתי. {subject} {verb} {who} ב-{when}.',
+    en: 'Got it. {subject} {verb} {who} at {when}.'
+  },
+  'schedule.confirmed.body': {
+    he: 'קיבלתי. {subject} {verb} {who} ב-{when}:\n"{body}"',
+    en: 'Got it. {subject} {verb} {who} at {when}:\n"{body}"'
+  },
+  'schedule.group': {
+    he: 'קבוצת "{name}": {count} הודעות אישיות נפרדות תוזמנו.',
+    en: 'Group "{name}": {count} separate personal messages scheduled.'
+  },
+  'schedule.awaiting': {
+    he: '\nממתין לאישור מ־{names} — שלחתי להם בקשת הצטרפות. ההודעה תישלח רק אחרי שיאשרו.',
+    en: '\nWaiting for {names} to agree — I have sent them a request. The message goes out only once they approve.'
+  },
+  'schedule.declined': {
+    he: '\nלא נשלח ל־{names} — הם ביקשו לא לקבל הודעות.',
+    en: '\nNot sent to {names} — they asked not to receive messages.'
   }
 };
+
+/**
+ * What is being sent, and the verb that agrees with it.
+ *
+ * Hebrew verbs agree with the gender of their subject, so each noun carries
+ * its own — one shared verb is how "הסרטון תישלח" happens. English needs no
+ * such table, but keeping the same shape means the call site has no idea
+ * which language it is building.
+ */
+const MEDIA_SUBJECT = {
+  he: {
+    text:     { subject: 'ההודעה', verb: 'תישלח' },
+    image:    { subject: 'התמונה', verb: 'תישלח' },
+    video:    { subject: 'הסרטון', verb: 'יישלח' },
+    audio:    { subject: 'ההקלטה', verb: 'תישלח' },
+    document: { subject: 'המסמך',  verb: 'יישלח' },
+    other:    { subject: 'הקובץ',  verb: 'יישלח' }
+  },
+  en: {
+    text:     { subject: 'The message',  verb: 'will be sent' },
+    image:    { subject: 'The photo',    verb: 'will be sent' },
+    video:    { subject: 'The video',    verb: 'will be sent' },
+    audio:    { subject: 'The recording', verb: 'will be sent' },
+    document: { subject: 'The document', verb: 'will be sent' },
+    other:    { subject: 'The file',     verb: 'will be sent' }
+  }
+};
+
+export function mediaSubject(mediaType, lang = DEFAULT_LANGUAGE) {
+  const table = MEDIA_SUBJECT[lang] || MEDIA_SUBJECT[DEFAULT_LANGUAGE];
+  return table[mediaType || 'text'] || table.other;
+}
+
+/**
+ * A date the user will read as their own clock. Israel time in both
+ * languages — the user is here, whichever language they read in.
+ */
+export function formatWhen(iso, lang = DEFAULT_LANGUAGE) {
+  return new Date(iso).toLocaleString(lang === 'en' ? 'en-GB' : 'he-IL', {
+    timeZone: 'Asia/Jerusalem',
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+  });
+}
 
 /**
  * Look up a string. Falls back to Hebrew when a translation is missing, so a

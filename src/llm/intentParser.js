@@ -97,7 +97,18 @@ function buildSystemPrompt(language, { hasMedia = false } = {}) {
   const nowUtc = new Date();
   const nowLocal = nowUtc.toLocaleString('sv-SE', { timeZone: 'Asia/Jerusalem' });
 
+  // This parameter was accepted and never read, so the model answered in
+  // whatever language the last message happened to be in — one English
+  // sentence from a Hebrew speaker switched the whole reply to English.
+  const replyLanguage = language === 'en' ? 'English' : 'Hebrew';
+
   return `You are an expert message scheduling assistant. Your job is to parse user messages and extract scheduling intent.
+
+OUTPUT LANGUAGE: write "error_text" in ${replyLanguage}, even when this
+particular message is written in the other language. The user has chosen
+${replyLanguage}; one message in another language does not change that.
+"message_body" is the exception — it is the user's own words and is copied
+through exactly as written, never translated.
 
 CURRENT TIME REFERENCE (use this to resolve relative times like "tomorrow", "in 2 hours", "מחר"):
 - Current time in Israel (Asia/Jerusalem): ${nowLocal}

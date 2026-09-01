@@ -2,7 +2,7 @@ import express from 'express';
 import { validateMetaWebhookSignature, extractMessageFromWebhook, extractStatusesFromWebhook, formatMetaResponse } from '../meta/webhookHandler.js';
 import { recordDeliveryStatuses } from '../meta/deliveryStatus.js';
 import { sendWhatsAppMessage } from '../meta/sendHandler.js';
-import { parseSchedulingIntent, detectLanguage } from '../llm/intentParser.js';
+import { parseSchedulingIntent } from '../llm/intentParser.js';
 import { extractWhatsappUserContext } from '../middleware/whatsappUserContext.js';
 import { registerOrUpdateContact, getContactNameByPhone, autoRegisterSender, normalizePhoneNumber, findContactsByName } from '../auth/userContextExtractor.js';
 import { recordInboundMessage } from '../meta/serviceWindow.js';
@@ -42,7 +42,7 @@ import { userQuery } from '../db/multitenancyHelpers.js';
 import {
   detectInitialLanguage, getLanguage, setLanguage, parseLanguageCommand
 } from '../i18n/language.js';
-import { t } from '../i18n/messages.js';
+import { t, mediaSubject, formatWhen } from '../i18n/messages.js';
 
 const router = express.Router();
 
@@ -231,7 +231,7 @@ router.post('/webhook', async (req, res) => {
       if (held?.is_fresh && isComplete(held.entities, Boolean(held.media_id))) {
         await clearPendingRequest(phone);
         await handleScheduleMessage(
-          req.userId, phone, held.entities, null, held.media_id, held.media_type
+          req.userId, phone, held.entities, held.media_id, held.media_type
         );
         return;
       }
@@ -361,9 +361,6 @@ router.post('/webhook', async (req, res) => {
       return;
     }
 
-    // Detect language
-    const language = detectLanguage(text);
-
     // Someone walking away from a half-finished request should be able to say
     // so, rather than having it merge into whatever they say next.
     if (type === 'text' && isAbandonment(text)) {
@@ -376,7 +373,7 @@ router.post('/webhook', async (req, res) => {
     // does not treat the absent message text as something missing.
     const hasMedia = Boolean(mediaId) || Boolean(await peekPendingMedia(phone));
     console.log(`🧠 Parsing intent for: "${text}"${hasMedia ? ' (with media)' : ''}`);
-    const intentResult = await parseSchedulingIntent(text, language, { hasMedia });
+    const intentResult = await parseSchedulingIntent(text, lang, { hasMedia });
     console.log(`   Result:`, intentResult);
 
     // This message may be the answer to a question the bot asked. Fold it into
@@ -439,7 +436,7 @@ router.post('/webhook', async (req, res) => {
     }
     console.log(`✅ Intent: ${intentResult.intent}`);
 
-    const { intent, entities, confirmationText } = intentResult;
+    const { intent, entities } = intentResult;
 
     // Handle different intents
     switch (intent) {
@@ -460,16 +457,16 @@ router.post('/webhook', async (req, res) => {
               withHour(entities.scheduled_timestamp, learned, ambiguous.minutes);
             console.log(`   ${ambiguous.hour} → ${learned}:00 from this user's earlier answer`);
           } else {
-            await askWhichHour(req.userId, phone, entities, confirmationText, ambiguous);
+            await askWhichHour(req.userId, phone, entities, ambiguous);
             break;
           }
         } else if (intentResult.timeIsVague && intentResult.timeOptions?.length === 2) {
           // "על הבוקר" is a range rather than a time.
-          await askWhichTime(req.userId, phone, entities, confirmationText, intentResult.timeOptions);
+          await askWhichTime(req.userId, phone, entities, intentResult.timeOptions);
           break;
         }
 
-        await handleScheduleMessage(req.userId, phone, entities, confirmationText);
+        await handleScheduleMessage(req.userId, phone, entities);
         break;
       }
 
@@ -511,7 +508,7 @@ router.post('/webhook', async (req, res) => {
  * Numbered rather than lettered because the two options are clock times, and
  * a numbered list is what people answer with a digit.
  */
-async function askWhichHour(userId, senderPhone, entities, confirmationText, ambiguous) {
+async function askWhichHour(userId, senderPhone, entities, ambiguous) {
   const { hour, minutes, morning, evening } = ambiguous;
 
   await storeChoice(userId, senderPhone, 'schedule_hour', {
@@ -519,8 +516,7 @@ async function askWhichHour(userId, senderPhone, entities, confirmationText, amb
     statedHour: hour,
     minutes,
     options: [{ resolvedHour: morning }, { resolvedHour: evening }],
-    entities,
-    confirmationText
+    entities
   });
 
   await sendWhatsAppMessage(
@@ -536,15 +532,14 @@ async function askWhichHour(userId, senderPhone, entities, confirmationText, amb
  * proposed for it. Cheaper than guessing wrong on a message that goes out
  * hours later, when there is nothing left to correct.
  */
-async function askWhichTime(userId, senderPhone, entities, confirmationText, options) {
+async function askWhichTime(userId, senderPhone, entities, options) {
   const label = iso => new Date(iso).toLocaleTimeString('he-IL', {
     timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit'
   });
 
   await storeChoice(userId, senderPhone, 'schedule_time', {
     options: options.map(iso => ({ iso, label: label(iso) })),
-    entities,
-    confirmationText
+    entities
   });
 
   await sendWhatsAppMessage(
@@ -574,13 +569,13 @@ async function handleChoice(userId, senderPhone, choice) {
   switch (choice.kind) {
     case 'schedule_recipient': {
       const entities = { ...payload.entities, recipient_phone: option.phone, recipient_name: option.name, recipient_group: null };
-      await handleScheduleMessage(userId, senderPhone, entities, payload.confirmationText, payload.mediaId);
+      await handleScheduleMessage(userId, senderPhone, entities, payload.mediaId);
       return;
     }
 
     case 'schedule_group': {
       const entities = { ...payload.entities, recipient_group: option.name, recipient_name: null, recipient_phone: null };
-      await handleScheduleMessage(userId, senderPhone, entities, payload.confirmationText, payload.mediaId);
+      await handleScheduleMessage(userId, senderPhone, entities, payload.mediaId);
       return;
     }
 
@@ -608,20 +603,20 @@ async function handleChoice(userId, senderPhone, choice) {
         )
       };
       await rememberHour(userId, payload.statedHour, option.resolvedHour);
-      await handleScheduleMessage(userId, senderPhone, entities, payload.confirmationText);
+      await handleScheduleMessage(userId, senderPhone, entities);
       return;
     }
 
     case 'schedule_time': {
       const entities = { ...payload.entities, scheduled_timestamp: option.iso };
-      await handleScheduleMessage(userId, senderPhone, entities, payload.confirmationText);
+      await handleScheduleMessage(userId, senderPhone, entities);
       return;
     }
 
     case 'voice_delivery': {
       const mediaId = option.mode === 'audio' ? payload.mediaId : null;
       console.log(`🎙️  Sender chose to deliver the ${option.mode}`);
-      await handleScheduleMessage(userId, senderPhone, payload.entities, payload.confirmationText, mediaId);
+      await handleScheduleMessage(userId, senderPhone, payload.entities, mediaId);
       return;
     }
 
@@ -727,7 +722,6 @@ async function handleVoiceNote(userId, phone, mediaId) {
       { mode: 'audio', label: 'הקלטה' }
     ],
     entities: intentResult.entities,
-    confirmationText: intentResult.confirmationText,
     mediaId,
     transcript
   });
@@ -823,7 +817,7 @@ async function resolveRecipients(userId, entities) {
  * into an individual 1-on-1 message per member, each with its own queue row,
  * consent state and delivery status.
  */
-async function handleScheduleMessage(userId, senderPhone, entities, confirmationText, mediaId = null, mediaType = null, mediaFilename = null) {
+async function handleScheduleMessage(userId, senderPhone, entities, mediaId = null, mediaType = null, mediaFilename = null) {
   try {
     const { message_body, scheduled_timestamp, delivery_channel } = entities;
     console.log('   Entities:', JSON.stringify(entities));
@@ -857,7 +851,6 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
         await storeChoice(userId, senderPhone, resolved.choice.kind, {
           options: resolved.choice.options,
           entities,
-          confirmationText,
           mediaId
         });
       }
@@ -1004,10 +997,12 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
     await sendWhatsAppMessage(
       senderPhone,
       buildScheduleConfirmation({
-        group, confirmationText, queued, awaitingConsent, declined,
+        group, queued, awaitingConsent, declined,
         mediaType: mediaId ? mediaType : null,
         scheduledAt: scheduled_timestamp,
-        recipients
+        recipients,
+        body: message_body,
+        lang: await getLanguage(userId)
       })
         + (warning || '')
     );
@@ -1022,53 +1017,43 @@ async function handleScheduleMessage(userId, senderPhone, entities, confirmation
   }
 }
 
-// A Hebrew verb agrees with the gender of its subject, so each noun carries
-// its own. One shared verb is how "הסרטון תישלח" happens.
-const MEDIA_SUBJECT = {
-  image:    { noun: 'התמונה', verb: 'תישלח' },
-  video:    { noun: 'הסרטון', verb: 'יישלח' },
-  audio:    { noun: 'ההקלטה', verb: 'תישלח' },
-  document: { noun: 'המסמך',  verb: 'יישלח' }
-};
-
 /**
- * Name the file and when it goes. Nothing here is a guess, so nothing here
- * needs a model to phrase it.
+ * Who the message is going to, with the preposition the language wants
+ * attached: Hebrew glues ל to the name, English needs a separate "to".
  */
-function mediaConfirmation({ mediaType, scheduledAt, recipients, group }) {
-  const when = new Date(scheduledAt).toLocaleString('he-IL', {
-    timeZone: 'Asia/Jerusalem',
-    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-  });
+function describeRecipient({ group, recipients, lang }) {
+  const name = recipients[0]?.name || recipients[0]?.phone;
 
-  const who = group
-    ? `לקבוצת ${group.name}`
-    : `ל${recipients[0]?.name || recipients[0]?.phone || 'נמען'}`;
-
-  const subject = mediaType
-    ? (MEDIA_SUBJECT[mediaType] || { noun: 'הקובץ', verb: 'יישלח' })
-    : { noun: 'ההודעה', verb: 'תישלח' };
-
-  return `קיבלתי. ${subject.noun} ${subject.verb} ${who} ב-${when}.`;
+  if (lang === 'en') {
+    return group ? `the group "${group.name}"` : `to ${name || 'the recipient'}`;
+  }
+  return group ? `לקבוצת ${group.name}` : `ל${name || 'נמען'}`;
 }
 
 /**
  * Tell the sender exactly what will happen, including who is still pending —
  * silence about a held message reads as a message that was sent.
+ *
+ * Every fact here is one we hold: the recipient, the file, the time. The
+ * model used to phrase this sentence, and stated the same scheduled time as
+ * 20:14 in one message and 17:15 — UTC — in the next, which reads as a bot
+ * running on someone else's clock. It is written here instead.
  */
 function buildScheduleConfirmation({
-  group, confirmationText, queued, awaitingConsent, declined,
-  mediaType, scheduledAt, recipients
+  group, queued, awaitingConsent, declined,
+  mediaType, scheduledAt, recipients, body, lang = 'he'
 }) {
-  // When a file is attached the model keeps apologising for the message text
-  // it thinks is missing, twice now despite being told not to. This sentence
-  // has to be exact, so it is written here rather than asked for.
-  // The model's wording is used when there is one. A request resumed after an
-  // interruption has none, so the sentence is written here instead of sent
-  // empty.
-  const headline = mediaType
-    ? mediaConfirmation({ mediaType, scheduledAt, recipients, group })
-    : (confirmationText || mediaConfirmation({ mediaType: null, scheduledAt, recipients, group }));
+  const { subject, verb } = mediaSubject(mediaType, lang);
+  const vars = {
+    subject, verb, body,
+    who: describeRecipient({ group, recipients, lang }),
+    when: formatWhen(scheduledAt, lang)
+  };
+
+  // Read the text back only when it is the whole content. With a file
+  // attached it is a caption, and the file is what the sentence is about.
+  const quoteBody = !mediaType && body && body.length <= 300;
+  const headline = t(quoteBody ? 'schedule.confirmed.body' : 'schedule.confirmed', lang, vars);
 
   if (!group && awaitingConsent.length === 0 && declined.length === 0) {
     return headline;
@@ -1077,21 +1062,20 @@ function buildScheduleConfirmation({
   const lines = [];
 
   if (group) {
-    const total = queued.length + awaitingConsent.length;
-    lines.push(`קבוצת "${group.name}": ${total} הודעות אישיות נפרדות תוזמנו.`);
+    lines.push(t('schedule.group', lang, {
+      name: group.name,
+      count: queued.length + awaitingConsent.length
+    }));
   } else if (queued.length > 0) {
     lines.push(headline);
   }
 
   if (awaitingConsent.length > 0) {
-    lines.push(
-      `\nממתין לאישור מ־${awaitingConsent.join(', ')} — ` +
-      `שלחתי להם בקשת הצטרפות. ההודעה תישלח רק אחרי שיאשרו.`
-    );
+    lines.push(t('schedule.awaiting', lang, { names: awaitingConsent.join(', ') }));
   }
 
   if (declined.length > 0) {
-    lines.push(`\nלא נשלח ל־${declined.join(', ')} — הם ביקשו לא לקבל הודעות.`);
+    lines.push(t('schedule.declined', lang, { names: declined.join(', ') }));
   }
 
   return lines.join('\n');
