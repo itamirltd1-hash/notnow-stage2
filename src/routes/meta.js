@@ -965,7 +965,7 @@ async function handleScheduleMessage(userId, senderPhone, entities, mediaId = nu
           // The recipient sees this name and nothing else about the sender,
           // so it has to be one they would recognise.
           const senderName = await getDisplayName(userId);
-          await requestConsent(userId, recipient.phone, senderName);
+          await requestConsent(userId, recipient.phone, senderName, recipient.name);
         }
       }
 

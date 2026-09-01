@@ -2,6 +2,7 @@ import pool from '../db/pool.js';
 import { normalizePhoneNumber } from '../auth/userContextExtractor.js';
 import { sendMediaMessage, sendAudioMessage } from './sendHandler.js';
 import { senderSignature, sign } from './attribution.js';
+import { isSuppressed } from '../privacy/erasure.js';
 
 /**
  * Deliver files that were promised but could not be sent at the time.
@@ -17,13 +18,28 @@ export async function deliverDeferredMedia(phone) {
   const normalized = normalizePhoneNumber(phone);
   if (!normalized) return;
 
+  // Someone who asked to be erased is owed nothing, including a file we said
+  // was coming. The promise was made before they withdrew; it does not survive.
+  if (await isSuppressed(normalized)) return;
+
   let rows;
   try {
+    // "Reply and I'll send it" was addressed to someone who had not yet said
+    // no. A row stays flagged after its recipient declines, and the next thing
+    // they typed — including the refusal itself — delivered the file anyway.
     const result = await pool.query(
-      `SELECT queue_id, user_id, media_id, media_type, media_filename, message_body
-         FROM active_queue
-        WHERE recipient_phone = $1 AND media_deferred = TRUE AND media_id IS NOT NULL
-        ORDER BY queue_id ASC
+      `SELECT q.queue_id, q.user_id, q.media_id, q.media_type, q.media_filename, q.message_body
+         FROM active_queue q
+        WHERE q.recipient_phone = $1
+          AND q.media_deferred = TRUE
+          AND q.media_id IS NOT NULL
+          AND q.status <> 'cancelled'
+          AND NOT EXISTS (
+                SELECT 1 FROM contacts c
+                 WHERE c.phone_number = q.recipient_phone
+                   AND c.consent_status = 'declined'
+              )
+        ORDER BY q.queue_id ASC
         LIMIT 5`,
       [normalized]
     );

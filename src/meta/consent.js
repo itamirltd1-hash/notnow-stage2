@@ -44,7 +44,7 @@ export async function getConsentStatus(userId, phone) {
  * cheaper than being reported: reports are what drive quality rating down and
  * get a number restricted.
  */
-export async function requestConsent(userId, phone, senderName = null) {
+export async function requestConsent(userId, phone, senderName = null, recipientName = null) {
   const normalized = normalizePhoneNumber(phone);
 
   // Asking permission is still contact. Someone who asked to be erased is not
@@ -67,7 +67,11 @@ export async function requestConsent(userId, phone, senderName = null) {
     if (await isWithinServiceWindow(normalized)) {
       await sendWhatsAppMessage(normalized, ask);
     } else {
-      await sendTemplateMessage(normalized, TEMPLATE_NAME, TEMPLATE_LANGUAGE, ['שלום', ask]);
+      // The greeting slot is a name, and we usually have one. Passing the word
+      // "שלום" into a template that already greets produced "שלום שלום".
+      await sendTemplateMessage(
+        normalized, TEMPLATE_NAME, TEMPLATE_LANGUAGE, [recipientName || 'שלום', ask]
+      );
     }
 
     await pool.query(
