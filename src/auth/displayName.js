@@ -1,4 +1,6 @@
 import pool from '../db/pool.js';
+import { getLanguage } from '../i18n/language.js';
+import { t } from '../i18n/messages.js';
 
 // Two shapes, because Hebrew attaches the preposition to the word: "קרא לי דנה"
 // separates the name, while "שנה את השם שלי לדנה" glues ל to it.
@@ -69,15 +71,13 @@ export async function setDisplayName(userId, name) {
 }
 
 export async function runNameCommand(userId, command) {
+  const lang = await getLanguage(userId);
+
   if (command.action === 'get') {
     const name = await getDisplayName(userId);
-    return name
-      ? `כשאני מבקש אישור מנמען חדש, אני מציג אותך בשם "${name}".\nלשינוי — "קרא לי [שם]".`
-      : 'עדיין אין לי שם עבורך. אפשר לקבוע אותו: "קרא לי דנה".';
+    return name ? t('name.current', lang, { name }) : t('name.none', lang);
   }
 
   const saved = await setDisplayName(userId, command.name);
-  return saved
-    ? `מעכשיו אציג אותך בשם "${saved}" כשאבקש אישור מנמען חדש.`
-    : 'לא הצלחתי לשמור את השם. אפשר לנסות שוב?';
+  return saved ? t('name.saved', lang, { name: saved }) : t('name.saveFailed', lang);
 }

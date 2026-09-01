@@ -1,5 +1,6 @@
 import pool from '../db/pool.js';
 import { BRAND } from '../brand.js';
+import { t } from '../i18n/messages.js';
 
 // Bump when the terms change in a way that needs agreeing to again. Storing
 // "accepted" without which document was accepted proves very little.
@@ -44,16 +45,10 @@ export async function recordAcceptance(userId) {
  * the document lives on a page and the chat carries only the link and the
  * decision.
  */
-export function termsPrompt() {
-  return (
-    `לפני שאתזמן הודעות בשמך, צריך אישור לתנאי השימוש ולמדיניות הפרטיות:\n` +
-    `${termsUrl()}\n\n` +
-    `בקצרה: ${BRAND} שומר את ההודעות שתזמנת עד שהן נשלחות, ומוחק אותן שבוע לאחר מכן. ` +
-    `לפני שליחה למישהו חדש, נבקש את אישורו.\n\n` +
-    `להמשך — להשיב "מאשר".`
-  );
+export function termsPrompt(lang = 'he') {
+  return t('terms.prompt', lang, { url: termsUrl(), brand: BRAND });
 }
 
-export function acceptanceConfirmation() {
-  return 'תודה. אפשר להתחיל — למשל: שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"';
+export function acceptanceConfirmation(lang = 'he') {
+  return t('terms.accepted', lang);
 }

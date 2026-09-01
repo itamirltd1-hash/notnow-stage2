@@ -83,6 +83,115 @@ const STRINGS = {
     he: 'הוסרת. לא נשלח אליך הודעות נוספות.',
     en: 'You have been removed. No further messages will be sent to you.'
   },
+  // ── Who a message is going to ─────────────────────────────────────────
+  // The preposition belongs to the language, not to the call site: Hebrew
+  // glues it to the name, English needs a word of its own.
+  'recipient.group':   { he: 'לקבוצת {name}', en: 'to the group "{name}"' },
+  'recipient.person':  { he: 'ל{name}',       en: 'to {name}' },
+  'recipient.unnamed': { he: 'נמען',          en: 'the recipient' },
+
+  // ── The queue ─────────────────────────────────────────────────────────
+  // A group send is many rows collapsed into one entry, so the list reads the
+  // way the sender thinks about it: one message to a group, not eight rows.
+  'queue.empty': {
+    he: 'אין כרגע הודעות שממתינות לשליחה.',
+    en: 'Nothing is waiting to be sent.'
+  },
+  'queue.list': {
+    he: '{count} הודעות ממתינות:\n{lines}\n\nלביטול אחת מהן — למשל "בטל 1".',
+    en: '{count} messages are waiting:\n{lines}\n\nTo cancel one — for example "cancel 1".'
+  },
+  'queue.nothingToCancel': {
+    he: 'אין כרגע הודעות שממתינות, אז אין מה לבטל.',
+    en: 'Nothing is waiting, so there is nothing to cancel.'
+  },
+  'queue.whichToCancel': {
+    he: 'איזו מהן לבטל?\n{lines}\n\nאפשר להשיב במספר, או "בטל הכל".',
+    en: 'Which one should I cancel?\n{lines}\n\nReply with a number, or "cancel all".'
+  },
+  'queue.cancelledAll': {
+    he: 'ביטלתי את כל {count} ההודעות שהמתינו.',
+    en: 'Cancelled all {count} waiting messages.'
+  },
+  'queue.noSuchNumber': {
+    he: 'אין הודעה מספר {index} — יש {count} בתור. "מה בתור" יציג את הרשימה.',
+    en: 'There is no message {index} — there are {count} in the queue. "what is in the queue" shows the list.'
+  },
+  'queue.cancelledOne': { he: 'ביטלתי. {entry}', en: 'Cancelled. {entry}' },
+  'queue.cancelled':    { he: 'ביטלתי.',        en: 'Cancelled.' },
+  'queue.entry':        { he: '{who} — {when} — {what}{waiting}', en: '{who} — {when} — {what}{waiting}' },
+  'queue.toGroup': {
+    he: 'לקבוצת {name} ({count} אנשים)',
+    en: 'to the group {name} ({count} people)'
+  },
+  'queue.toPerson': { he: 'ל{who}', en: 'to {who}' },
+  'queue.awaitingGroup': {
+    he: ' — {count} עדיין לא אישרו',
+    en: ' — {count} have not agreed yet'
+  },
+  'queue.awaitingOne': {
+    he: ' — ממתינה לאישור הנמען',
+    en: ' — waiting for the recipient to agree'
+  },
+  'groups.unnamed': { he: 'קבוצה', en: 'group' },
+
+  // ── Quota ─────────────────────────────────────────────────────────────
+  'quota.unlimited': { he: 'המנוי שלך ללא הגבלה.', en: 'Your plan has no limit.' },
+  'quota.checkFailed': {
+    he: 'לא הצלחתי לבדוק את המכסה כרגע. אפשר לנסות שוב בעוד רגע.',
+    en: 'I could not check your quota just now. Please try again in a moment.'
+  },
+  'quota.exhausted': {
+    he: 'המכסה החודשית נוצלה במלואה — {used} מתוך {limit}. היא מתחדשת ב-{date}.',
+    en: 'The monthly quota is fully used — {used} of {limit}. It renews on {date}.'
+  },
+  'quota.remaining': {
+    he: 'נשארו {remaining} הודעות מתוך {limit} החודש. המכסה מתחדשת ב-{date}.',
+    en: '{remaining} of {limit} messages remain this month. The quota renews on {date}.'
+  },
+  'quota.warn.last': {
+    he: '\n\nזו הייתה ההודעה האחרונה במכסה החודשית. היא מתחדשת ב-{date}.',
+    en: '\n\nThat was the last message in this month’s quota. It renews on {date}.'
+  },
+  'quota.warn.remaining': {
+    he: '\n\nנותרו {remaining} הודעות במכסה החודשית, שמתחדשת ב-{date}.',
+    en: '\n\n{remaining} messages remain in this month’s quota, which renews on {date}.'
+  },
+
+  // ── Terms ─────────────────────────────────────────────────────────────
+  // A wall of legal text in a chat window is read by nobody, so the document
+  // lives on a page and the chat carries the link and the decision.
+  'terms.prompt': {
+    he: 'לפני שאתזמן הודעות בשמך, צריך אישור לתנאי השימוש ולמדיניות הפרטיות:\n{url}\n\n' +
+        'בקצרה: {brand} שומר את ההודעות שתזמנת עד שהן נשלחות, ומוחק אותן שבוע לאחר מכן. ' +
+        'לפני שליחה למישהו חדש, נבקש את אישורו.\n\nלהמשך — להשיב "מאשר".',
+    en: 'Before I schedule messages on your behalf, you need to accept the terms of use and privacy policy:\n{url}\n\n' +
+        'In short: {brand} keeps the messages you schedule until they are sent, and deletes them a week later. ' +
+        'Before writing to someone new, we ask their permission.\n\nTo continue — reply "accept".'
+  },
+  'terms.accepted': {
+    he: 'תודה. אפשר להתחיל — למשל: שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"',
+    en: 'Thank you. You can start — for example: send to Danny 0501234567 tomorrow at 9:00 "see you at the meeting"'
+  },
+
+  // ── The display name recipients see ───────────────────────────────────
+  'name.current': {
+    he: 'כשאני מבקש אישור מנמען חדש, אני מציג אותך בשם "{name}".\nלשינוי — "קרא לי [שם]".',
+    en: 'When I ask a new recipient for permission, I introduce you as "{name}".\nTo change it — "call me [name]".'
+  },
+  'name.none': {
+    he: 'עדיין אין לי שם עבורך. אפשר לקבוע אותו: "קרא לי דנה".',
+    en: 'I have no name for you yet. You can set one: "call me Dana".'
+  },
+  'name.saved': {
+    he: 'מעכשיו אציג אותך בשם "{name}" כשאבקש אישור מנמען חדש.',
+    en: 'From now on I will introduce you as "{name}" when I ask a new recipient for permission.'
+  },
+  'name.saveFailed': {
+    he: 'לא הצלחתי לשמור את השם. אפשר לנסות שוב?',
+    en: 'I could not save that name. Could you try again?'
+  },
+
   // ── First impressions ─────────────────────────────────────────────────
   'welcome': {
     he: 'שלום! אני {brand} 👋\n' +
@@ -400,6 +509,28 @@ const MEDIA_SUBJECT = {
 export function mediaSubject(mediaType, lang = DEFAULT_LANGUAGE) {
   const table = MEDIA_SUBJECT[lang] || MEDIA_SUBJECT[DEFAULT_LANGUAGE];
   return table[mediaType || 'text'] || table.other;
+}
+
+// The same nouns without the definite article, for a list where each line is
+// an item rather than a sentence: "photo + caption", not "The photo".
+const MEDIA_LABEL = {
+  he: { image: 'תמונה', video: 'סרטון', audio: 'הקלטה', document: 'מסמך', other: 'קובץ' },
+  en: { image: 'photo', video: 'video', audio: 'recording', document: 'document', other: 'file' }
+};
+
+export function mediaLabel(mediaType, lang = DEFAULT_LANGUAGE) {
+  const table = MEDIA_LABEL[lang] || MEDIA_LABEL[DEFAULT_LANGUAGE];
+  return table[mediaType] || table.other;
+}
+
+/**
+ * A date without a time — for a renewal or a deadline, where the hour would
+ * be noise. Israel time, as everywhere else the user reads a date.
+ */
+export function formatDate(date, lang = DEFAULT_LANGUAGE) {
+  return new Date(date).toLocaleDateString(lang === 'en' ? 'en-GB' : 'he-IL', {
+    timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'long'
+  });
 }
 
 /**

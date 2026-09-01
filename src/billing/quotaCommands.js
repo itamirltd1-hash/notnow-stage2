@@ -1,5 +1,7 @@
 import { checkUserQuota } from './quotaMiddleware.js';
 import { isExempt } from './exemptions.js';
+import { getLanguage } from '../i18n/language.js';
+import { t, formatDate } from '../i18n/messages.js';
 
 const ASK_QUOTA =
   /(?:כמה\s+(?:הודעות\s+)?(?:נשאר|נשארו|יש\s+לי|נותר|נותרו)|מה\s+(?:המצב\s+עם\s+)?(?:ה)?(?:חבילה|מכסה|מנוי)|מצב\s+(?:ה)?(?:חבילה|מכסה|מנוי)|^\s*מכסה\s*$|^\s*יתרה\s*$|quota)/i;
@@ -15,31 +17,29 @@ export function isQuotaQuestion(text) {
 /**
  * First day of next month, which is when a monthly_usage row stops applying.
  */
-function renewalDate() {
+function renewalDate(lang) {
   const now = new Date();
   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  return next.toLocaleDateString('he-IL', {
-    timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'long'
-  });
+  return formatDate(next, lang);
 }
 
 export async function describeQuota(userId, senderPhone) {
-  if (isExempt(senderPhone)) {
-    return 'המנוי שלך ללא הגבלה.';
-  }
+  const lang = await getLanguage(userId);
+
+  if (isExempt(senderPhone)) return t('quota.unlimited', lang);
 
   const quota = await checkUserQuota(userId);
-  if (quota.error) {
-    return 'לא הצלחתי לבדוק את המכסה כרגע. אפשר לנסות שוב בעוד רגע.';
-  }
+  if (quota.error) return t('quota.checkFailed', lang);
+
+  const date = renewalDate(lang);
 
   if (quota.remaining === 0) {
-    return `המכסה החודשית נוצלה במלואה — ${quota.used} מתוך ${quota.limit}. ` +
-      `היא מתחדשת ב-${renewalDate()}.`;
+    return t('quota.exhausted', lang, { used: quota.used, limit: quota.limit, date });
   }
 
-  return `נשארו ${quota.remaining} הודעות מתוך ${quota.limit} החודש. ` +
-    `המכסה מתחדשת ב-${renewalDate()}.`;
+  return t('quota.remaining', lang, {
+    remaining: quota.remaining, limit: quota.limit, date
+  });
 }
 
 /**
@@ -58,9 +58,10 @@ export async function quotaWarningLine(userId, senderPhone) {
   const used = quota.used / quota.limit;
   if (used < WARN_AT) return null;
 
-  if (quota.remaining === 0) {
-    return `\n\nזו הייתה ההודעה האחרונה במכסה החודשית. היא מתחדשת ב-${renewalDate()}.`;
-  }
+  const lang = await getLanguage(userId);
+  const date = renewalDate(lang);
 
-  return `\n\nנותרו ${quota.remaining} הודעות במכסה החודשית, שמתחדשת ב-${renewalDate()}.`;
+  return quota.remaining === 0
+    ? t('quota.warn.last', lang, { date })
+    : t('quota.warn.remaining', lang, { remaining: quota.remaining, date });
 }

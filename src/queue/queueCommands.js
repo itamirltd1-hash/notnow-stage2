@@ -1,4 +1,6 @@
 import pool from '../db/pool.js';
+import { getLanguage } from '../i18n/language.js';
+import { t, mediaLabel, formatWhen } from '../i18n/messages.js';
 
 const LIST = /^\s*(?:מה\s+בתור|מה\s+מתוזמן|בתור|התור|תור|רשימה|queue)\s*[?？]?\s*$/i;
 const CANCEL = /^\s*(?:בטל|תבטל|בטלי|ביטול)\s*(?:את\s+)?(\d+|הכל|הכול|all)?\s*[!.]?\s*$/i;
@@ -79,57 +81,60 @@ export async function getPendingEntries(userId) {
   return entries;
 }
 
-function formatWhen(date) {
-  return new Date(date).toLocaleString('he-IL', {
-    timeZone: 'Asia/Jerusalem',
-    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-  });
-}
-
-async function groupName(groupId) {
+async function groupName(groupId, lang) {
   const result = await pool.query('SELECT name FROM groups WHERE group_id = $1', [groupId]);
-  return result.rows[0]?.name || 'קבוצה';
+  return result.rows[0]?.name || t('groups.unnamed', lang);
 }
 
-const MEDIA_LABEL = { image: 'תמונה', video: 'סרטון', audio: 'הקלטה', document: 'מסמך' };
-
-function describeContent(entry) {
+function describeContent(entry, lang) {
   if (!entry.mediaId) return `"${entry.messageBody}"`;
-  const label = MEDIA_LABEL[entry.mediaType] || 'קובץ';
+  const label = mediaLabel(entry.mediaType, lang);
   return entry.messageBody ? `${label} + "${entry.messageBody}"` : label;
 }
 
-async function describeEntry(entry) {
+async function describeEntry(entry, lang) {
   const who = entry.groupId
-    ? `לקבוצת ${await groupName(entry.groupId)} (${entry.recipientCount} אנשים)`
-    : `ל${entry.recipientName || entry.recipientPhone}${entry.recipientName ? ` ${entry.recipientPhone}` : ''}`;
+    ? t('queue.toGroup', lang, {
+        name: await groupName(entry.groupId, lang), count: entry.recipientCount
+      })
+    : t('queue.toPerson', lang, {
+        who: `${entry.recipientName || entry.recipientPhone}` +
+             (entry.recipientName ? ` ${entry.recipientPhone}` : '')
+      });
 
-  const what = describeContent(entry);
   const waiting = entry.awaiting > 0
-    ? (entry.groupId ? ` — ${entry.awaiting} עדיין לא אישרו` : ' — ממתינה לאישור הנמען')
+    ? (entry.groupId
+        ? t('queue.awaitingGroup', lang, { count: entry.awaiting })
+        : t('queue.awaitingOne', lang))
     : '';
 
-  return `${who} — ${formatWhen(entry.scheduledAt)} — ${what}${waiting}`;
+  return t('queue.entry', lang, {
+    who, when: formatWhen(entry.scheduledAt, lang), what: describeContent(entry, lang), waiting
+  });
 }
 
 export async function runQueueCommand(userId, command) {
+  const lang = await getLanguage(userId);
   const entries = await getPendingEntries(userId);
+  const numbered = () => Promise.all(
+    entries.map(async (e, i) => `${i + 1}. ${await describeEntry(e, lang)}`)
+  );
 
   if (command.action === 'list') {
-    if (entries.length === 0) return 'אין כרגע הודעות שממתינות לשליחה.';
-    const lines = await Promise.all(entries.map(async (e, i) => `${i + 1}. ${await describeEntry(e)}`));
-    return `${entries.length} הודעות ממתינות:\n${lines.join('\n')}\n\nלביטול אחת מהן — למשל "בטל 1".`;
+    if (entries.length === 0) return t('queue.empty', lang);
+    const lines = await numbered();
+    return t('queue.list', lang, { count: entries.length, lines: lines.join('\n') });
   }
 
   // Cancelling
-  if (entries.length === 0) return 'אין כרגע הודעות שממתינות, אז אין מה לבטל.';
+  if (entries.length === 0) return t('queue.nothingToCancel', lang);
 
   if (command.target === null) {
-    const lines = await Promise.all(entries.map(async (e, i) => `${i + 1}. ${await describeEntry(e)}`));
+    const lines = await numbered();
     // The list is numbered, so a bare number is the natural answer. Returned
     // as a question the caller can park, rather than plain text.
     return {
-      reply: `איזו מהן לבטל?\n${lines.join('\n')}\n\nאפשר להשיב במספר, או "בטל הכל".`,
+      reply: t('queue.whichToCancel', lang, { lines: lines.join('\n') }),
       choice: {
         kind: 'cancel_queue',
         payload: {
@@ -143,17 +148,17 @@ export async function runQueueCommand(userId, command) {
   if (command.target === 'all') {
     const ids = entries.flatMap(e => e.queueIds);
     await cancelIds(userId, ids);
-    return `ביטלתי את כל ${entries.length} ההודעות שהמתינו.`;
+    return t('queue.cancelledAll', lang, { count: entries.length });
   }
 
   const index = command.target;
   if (index < 1 || index > entries.length) {
-    return `אין הודעה מספר ${index} — יש ${entries.length} בתור. "מה בתור" יציג את הרשימה.`;
+    return t('queue.noSuchNumber', lang, { index, count: entries.length });
   }
 
   const entry = entries[index - 1];
   await cancelIds(userId, entry.queueIds);
-  return `ביטלתי. ${await describeEntry(entry)}`;
+  return t('queue.cancelledOne', lang, { entry: await describeEntry(entry, lang) });
 }
 
 /**
@@ -165,7 +170,7 @@ export async function runQueueCommand(userId, command) {
  */
 export async function cancelChosenEntry(userId, queueIds) {
   await cancelIds(userId, queueIds);
-  return `ביטלתי.`;
+  return t('queue.cancelled', await getLanguage(userId));
 }
 
 async function cancelIds(userId, queueIds) {

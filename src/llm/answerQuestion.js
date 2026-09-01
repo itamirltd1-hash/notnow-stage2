@@ -15,8 +15,21 @@ const MODEL = 'claude-haiku-4-5-20251001';
  * confident answers about a product it has never seen — it once refused to
  * list group members, which is a thing this bot does.
  */
-export async function answerProductQuestion(question) {
+export async function answerProductQuestion(question, lang = 'he') {
   if (!process.env.ANTHROPIC_API_KEY) return null;
+
+  // The description stays in one language on purpose. Two descriptions drift,
+  // and then the bot describes two different products depending on who asks.
+  // The model reads the Hebrew and answers in whichever language was asked.
+  const answerIn = lang === 'en'
+    ? `- ענה באנגלית בלבד, באנגלית תקנית וטבעית. אל תשאיר מילים בעברית בתשובה.
+- אין הבחנת מין באנגלית, ולכן אין צורך בהתאם — אבל אל תניח את מינו של השואל.`
+    : `- ענה בעברית תקנית.
+- הקפד על התאם מין: התמונה תישלח, הסרטון יישלח, ההודעה תישלח, המסמך יישלח.
+- מינו של השואל אינו ידוע. פנה בלשון סתמית — "אפשר לתזמן" ולא "תזמן",
+  "כדאי לכתוב" ולא "כתוב".`;
+
+  const helpWord = lang === 'en' ? '"help"' : '"עזרה"';
 
   const system =
     `אתה עונה על שאלות של משתמשים לגבי שירות בשם Cue. להלן תיאור מלא של השירות.
@@ -25,13 +38,11 @@ ${capabilityDescription()}
 
 כללים:
 - ענה אך ורק על סמך התיאור שלמעלה. אל תסיק, אל תשער, ואל תמציא יכולות או מגבלות.
-- אם התשובה לא נמצאת בתיאור, אמור בפשטות שאינך יודע והצע לכתוב "עזרה".
+- אם התשובה לא נמצאת בתיאור, אמור בפשטות שאינך יודע והצע לכתוב ${helpWord}.
 - אל תמציא מגבלה. אם משהו לא מוזכר, זה לא אומר שהוא בלתי אפשרי — זה אומר שאינך יודע.
-- ענה בעברית תקנית, בשתיים-שלוש שורות לכל היותר, בטון ענייני וללא אימוג'ים.
-- הקפד על התאם מין: התמונה תישלח, הסרטון יישלח, ההודעה תישלח, המסמך יישלח.
-- מינו של השואל אינו ידוע. פנה בלשון סתמית — "אפשר לתזמן" ולא "תזמן",
-  "כדאי לכתוב" ולא "כתוב".
-- אל תפתח ב"שלום" ואל תסיים בשאלה מנומסת. תשובה בלבד.
+- שתיים-שלוש שורות לכל היותר, בטון ענייני וללא אימוג'ים.
+${answerIn}
+- אל תפתח בברכת שלום ואל תסיים בשאלה מנומסת. תשובה בלבד.
 - אם השאלה אינה על השירות, אמור שאתה עונה רק על שאלות לגבי Cue.`;
 
   try {

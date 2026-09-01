@@ -19,7 +19,11 @@ const CONVERTED = [
   'src/meta/consent.js',
   'src/meta/welcome.js',
   'src/dispatcher/batchDispatcher.js',
-  'src/privacy/erasure.js'
+  'src/privacy/erasure.js',
+  'src/queue/queueCommands.js',
+  'src/billing/quotaCommands.js',
+  'src/legal/terms.js',
+  'src/auth/displayName.js'
 ];
 
 // Comments explain the Hebrew the code handles; they are not sent to anyone.
@@ -35,15 +39,19 @@ for (const file of CONVERTED) {
   test(`${file} sends no Hebrew that is not in the catalogue`, () => {
     const source = stripComments(fs.readFileSync(path.join(ROOT, file), 'utf8'));
 
+    // Sent directly, or returned to a caller that will send it. Both are a
+    // reply; only the last hop differs.
     const offenders = source
       .split('\n')
-      .map((line, i) => [i + 1, line])
-      .filter(([, line]) => /sendWhatsAppMessage\(|sendTemplateMessage\(/.test(line))
+      .map((line, i) => [i + 1, line.trim()])
+      .filter(([, line]) =>
+        /sendWhatsAppMessage\(|sendTemplateMessage\(/.test(line)
+        || /^return |^\? |^: |reply: /.test(line))
       .filter(([, line]) => HEBREW.test(line));
 
     assert.deepEqual(
       offenders, [],
-      `${file}: a message is sent from a literal instead of t()`
+      `${file}: a reply is built from a literal instead of t()`
     );
   });
 }

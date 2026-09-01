@@ -236,7 +236,7 @@ router.post('/webhook', async (req, res) => {
         return;
       }
 
-      await sendWhatsAppMessage(phone, acceptanceConfirmation());
+      await sendWhatsAppMessage(phone, acceptanceConfirmation(lang));
       return;
     }
 
@@ -483,7 +483,7 @@ router.post('/webhook', async (req, res) => {
       case 'PRODUCT_QUESTION': {
         // Grounded in what the service actually does, rather than in whatever
         // the scheduling model imagines about it.
-        const answer = await answerProductQuestion(text);
+        const answer = await answerProductQuestion(text, lang);
         await sendWhatsAppMessage(phone, answer || helpMessage(lang));
         break;
       }
@@ -843,7 +843,7 @@ async function handleScheduleMessage(userId, senderPhone, entities, mediaId = nu
       // Hold the request across the interruption. Being asked to agree to
       // terms is no reason to have to type the whole thing again.
       await storePendingRequest(userId, senderPhone, entities, mediaId, mediaType);
-      await sendWhatsAppMessage(senderPhone, termsPrompt());
+      await sendWhatsAppMessage(senderPhone, termsPrompt(lang));
       return;
     }
 
@@ -1025,12 +1025,10 @@ async function handleScheduleMessage(userId, senderPhone, entities, mediaId = nu
  * attached: Hebrew glues ל to the name, English needs a separate "to".
  */
 function describeRecipient({ group, recipients, lang }) {
-  const name = recipients[0]?.name || recipients[0]?.phone;
+  if (group) return t('recipient.group', lang, { name: group.name });
 
-  if (lang === 'en') {
-    return group ? `the group "${group.name}"` : `to ${name || 'the recipient'}`;
-  }
-  return group ? `לקבוצת ${group.name}` : `ל${name || 'נמען'}`;
+  const name = recipients[0]?.name || recipients[0]?.phone;
+  return t('recipient.person', lang, { name: name || t('recipient.unnamed', lang) });
 }
 
 /**
