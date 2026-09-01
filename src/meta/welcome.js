@@ -23,8 +23,8 @@ export function isCourtesy(text) {
   return COURTESY.test(text);
 }
 
-export function courtesyReply() {
-  return 'בשמחה.';
+export function courtesyReply(lang = 'he') {
+  return t('courtesy.reply', lang);
 }
 
 /**
@@ -32,53 +32,18 @@ export function courtesyReply() {
  */
 export function welcomeMessage(profileName = null, lang = 'he') {
   // Say up front which name recipients will see. Finding that out only after
-  // five clients received "🔥BOSS🔥 ביקש..." is too late.
-  const naming = profileName
-    ? `\n\nכשאבקש אישור מנמען חדש, אציג אותך בשם "${profileName}". ` +
-      `לשינוי — "קרא לי [שם]".`
-    : '';
+  // five clients received "BOSS asked..." is too late.
+  const naming = profileName ? t('welcome.naming', lang, { name: profileName }) : '';
 
-  return (
-    `שלום! אני ${BRAND} 👋\n` +
-    'אני מתזמן הודעות WhatsApp — אומרים לי מה, למי ומתי, ואני שולח בזמן.\n\n' +
-    'אפשר פשוט לכתוב לי במילים חופשיות:\n' +
-    '• שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"\n' +
-    '• תזכיר לי עוד שעתיים לחזור ללקוח\n\n' +
-    'אפשר גם להקליט הודעה קולית ואני אתמלל אותה.\n\n' +
-    'לשליחה לכמה אנשים בבת אחת — אפשר ליצור קבוצה. כל אחד יקבל הודעה אישית נפרדת:\n' +
-    '• צור קבוצה טסטרים\n' +
-    '• הוסף לטסטרים 0501111111 דנה\n' +
-    '• תשלח לקבוצת טסטרים מחר ב-10 "בוקר טוב"\n\n' +
-    'לרשימת הפקודות המלאה — לכתוב "עזרה".' + naming +
-    `\n\n${t('language.hint', lang)}`
-  );
+  return t('welcome', lang, { brand: BRAND }) + naming
+    + `\n\n${t('language.hint', lang)}`;
 }
 
 /**
  * The fuller reference, for someone who already knows what the bot is.
  */
-export function helpMessage() {
-  return (
-    'הפקודות שלי:\n\n' +
-    '📅 תזמון\n' +
-    '• שלח לדני 0501234567 מחר ב-9:00 "נתראה"\n' +
-    '• שלח לדני עוד שעתיים "בדרך"\n' +
-    '  (אם דני שמור אצלי, אין צורך במספר)\n\n' +
-    '📋 מה מתוזמן\n' +
-    '• מה בתור — כל ההודעות שטרם נשלחו\n' +
-    '• בטל 2 — מבטל את מספר 2 ברשימה\n' +
-    '• בטל הכל\n\n' +
-    '👥 קבוצות — הודעה אישית לכל חבר, לא צ\'אט קבוצתי\n' +
-    '• צור קבוצה טסטרים\n' +
-    '• הוסף לטסטרים 0501111111 דנה\n' +
-    '• מי בטסטרים\n' +
-    '• מחק מטסטרים דנה\n' +
-    '• קבוצות\n\n' +
-    '🎙️ קולי\n' +
-    'אפשר להקליט הודעה ואתמלל אותה. אשאל אם לשלוח את הטקסט או את ההקלטה עצמה.\n\n' +
-    'לתשומת לבכם: לפני שליחה למישהו בפעם הראשונה, אני מבקש את אישורו. ' +
-    'ההודעה ממתינה עד שהוא מאשר.'
-  );
+export function helpMessage(lang = 'he') {
+  return t('help', lang);
 }
 
 /**

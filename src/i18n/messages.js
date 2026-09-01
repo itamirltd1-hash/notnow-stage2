@@ -83,6 +83,267 @@ const STRINGS = {
     he: 'הוסרת. לא נשלח אליך הודעות נוספות.',
     en: 'You have been removed. No further messages will be sent to you.'
   },
+  // ── First impressions ─────────────────────────────────────────────────
+  'welcome': {
+    he: 'שלום! אני {brand} 👋\n' +
+        'אני מתזמן הודעות WhatsApp — אומרים לי מה, למי ומתי, ואני שולח בזמן.\n\n' +
+        'אפשר פשוט לכתוב לי במילים חופשיות:\n' +
+        '• שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"\n' +
+        '• תזכיר לי עוד שעתיים לחזור ללקוח\n\n' +
+        'אפשר גם להקליט הודעה קולית ואני אתמלל אותה.\n\n' +
+        'לשליחה לכמה אנשים בבת אחת — אפשר ליצור קבוצה. כל אחד יקבל הודעה אישית נפרדת:\n' +
+        '• צור קבוצה טסטרים\n' +
+        '• הוסף לטסטרים 0501111111 דנה\n' +
+        '• תשלח לקבוצת טסטרים מחר ב-10 "בוקר טוב"\n\n' +
+        'לרשימת הפקודות המלאה — לכתוב "עזרה".',
+    en: 'Hello. I am {brand} 👋\n' +
+        'I schedule WhatsApp messages — tell me what, to whom and when, and I send it on time.\n\n' +
+        'You can write to me in plain words:\n' +
+        '• send to Danny 0501234567 tomorrow at 9:00 "see you at the meeting"\n' +
+        '• remind me in two hours to call the client back\n\n' +
+        'You can also record a voice note and I will transcribe it.\n\n' +
+        'To reach several people at once you can save a group — each person gets ' +
+        'their own separate message, never a group chat.\n\n' +
+        'For the full list of commands, write "help".'
+  },
+  'welcome.naming': {
+    he: '\n\nכשאבקש אישור מנמען חדש, אציג אותך בשם "{name}". לשינוי — "קרא לי [שם]".',
+    en: '\n\nWhen I ask a new recipient for permission, I will introduce you as "{name}". To change it — "call me [name]".'
+  },
+  'help': {
+    he: 'הפקודות שלי:\n\n' +
+        '📅 תזמון\n' +
+        '• שלח לדני 0501234567 מחר ב-9:00 "נתראה"\n' +
+        '• שלח לדני עוד שעתיים "בדרך"\n' +
+        '  (אם דני שמור אצלי, אין צורך במספר)\n\n' +
+        '📋 מה מתוזמן\n' +
+        '• מה בתור — כל ההודעות שטרם נשלחו\n' +
+        '• בטל 2 — מבטל את מספר 2 ברשימה\n' +
+        '• בטל הכל\n\n' +
+        '👥 קבוצות — הודעה אישית לכל חבר, לא צ\'אט קבוצתי\n' +
+        '• צור קבוצה טסטרים\n' +
+        '• הוסף לטסטרים 0501111111 דנה\n' +
+        '• מי בטסטרים\n' +
+        '• מחק מטסטרים דנה\n' +
+        '• קבוצות\n\n' +
+        '🎙️ קולי\n' +
+        'אפשר להקליט הודעה ואתמלל אותה. אשאל אם לשלוח את הטקסט או את ההקלטה עצמה.\n\n' +
+        'לתשומת לבכם: לפני שליחה למישהו בפעם הראשונה, אני מבקש את אישורו. ' +
+        'ההודעה ממתינה עד שהוא מאשר.',
+    // The group syntax is deliberately absent here: those commands are matched
+    // by Hebrew patterns and do not yet answer to English words. Listing them
+    // would be advertising something that does not work.
+    en: 'What I can do:\n\n' +
+        '📅 Scheduling\n' +
+        '• send to Danny 0501234567 tomorrow at 9:00 "see you there"\n' +
+        '• send to Danny in two hours "on my way"\n' +
+        '  (if Danny is already saved, the number is not needed)\n\n' +
+        '📋 What is scheduled\n' +
+        '• what is in the queue — everything not yet sent\n' +
+        '• cancel — I will show the list and you pick a number\n\n' +
+        '🎙️ Voice\n' +
+        'Record a message and I will transcribe it. I will ask whether to send the ' +
+        'words or the recording itself.\n\n' +
+        '👥 Groups let one message reach several people, each as their own private ' +
+        'message. Managing them still needs Hebrew wording for now.\n\n' +
+        'Note: before I write to someone for the first time, I ask their permission. ' +
+        'The message waits until they agree.'
+  },
+  'courtesy.reply': { he: 'בשמחה.', en: 'Any time.' },
+
+  // Group commands are matched by Hebrew patterns, so the English version
+  // says which words to use rather than pretending there are English ones.
+  'groups.syntax': {
+    he: 'פקודות קבוצות:\n' +
+        '• צור קבוצה טסטרים\n' +
+        '• הוסף לטסטרים 0501111111 דנה\n' +
+        '• מי בטסטרים\n' +
+        '• מחק מטסטרים דנה\n' +
+        '• קבוצות — כל הקבוצות שלך',
+    en: 'Groups are managed with Hebrew wording for now:\n' +
+        '• צור קבוצה טסטרים — create a group called טסטרים\n' +
+        '• הוסף לטסטרים 0501111111 דנה — add someone to it\n' +
+        '• מי בטסטרים — who is in it\n' +
+        '• מחק מטסטרים דנה — remove someone\n' +
+        '• קבוצות — list all your groups'
+  },
+
+  // ── Scheduling: what is missing, and what cannot be done ──────────────
+  'schedule.missing': {
+    he: 'חסר לי {missing}.{hint}',
+    en: 'I still need {missing}.{hint}'
+  },
+  'schedule.missing.recipient': { he: 'מספר הנמען', en: 'the recipient’s number' },
+  'schedule.missing.content':   { he: 'תוכן ההודעה', en: 'the message itself' },
+  'schedule.missing.time':      { he: 'מועד השליחה', en: 'the time to send it' },
+  'schedule.missing.join':      { he: ' ו', en: ' and ' },
+  'schedule.missing.hint': {
+    he: '\n\nאין לי מספר שמור עבור {name}. אפשר לשלוח פעם אחת עם המספר, ואשמור אותו.',
+    en: '\n\nI have no number saved for {name}. Send it once with the number and I will keep it.'
+  },
+  'schedule.failed': {
+    he: 'לא הצלחתי לתזמן את ההודעה. אפשר לנסות שוב.',
+    en: 'I could not schedule the message. Please try again.'
+  },
+  'schedule.quotaShort': {
+    he: 'המכסה החודשית לא מספיקה: נדרשות {needed} הודעות ונשארו {left} מתוך {limit} ({tier}).',
+    en: 'Not enough monthly quota: {needed} messages are needed and {left} of {limit} remain ({tier}).'
+  },
+
+  // ── Time ──────────────────────────────────────────────────────────────
+  'time.unparseable': {
+    he: 'לא הצלחתי להבין את המועד. אפשר למשל "מחר ב-9:00" או "עוד שעתיים".',
+    en: 'I could not read the time. Try something like "tomorrow at 9:00" or "in two hours".'
+  },
+  'time.past': {
+    he: 'המועד שביקשת ({when}) כבר עבר. מתי לשלוח?',
+    en: 'The time you asked for ({when}) has already passed. When should I send it?'
+  },
+  // "מחר ב-8" is eight in the morning to some people and eight at night to
+  // others, and guessing wrong sends the message twelve hours off.
+  'time.morningOrEvening': {
+    he: '{hour} בבוקר או בערב?\n1. {morning}\n2. {evening}',
+    en: 'Is {hour} in the morning or the evening?\n1. {morning}\n2. {evening}'
+  },
+  'time.whichExactly': {
+    he: 'באיזו שעה בדיוק?\n{options}\n\nלהשיב במספר.',
+    en: 'What time exactly?\n{options}\n\nReply with a number.'
+  },
+
+  // ── Choices ───────────────────────────────────────────────────────────
+  'choice.replyWithLetter': { he: '\n\nלהשיב באות.', en: '\n\nReply with a letter.' },
+  'choice.outOfRange': {
+    he: 'יש {count} אפשרויות. להשיב באות שמופיעה ברשימה.',
+    en: 'There are {count} options. Reply with one of the letters listed.'
+  },
+  'choice.failed': {
+    he: 'לא הצלחתי להשלים את הבחירה. אפשר לשלוח את הבקשה שוב.',
+    en: 'I could not complete that choice. Please send the request again.'
+  },
+  'contact.ambiguous': {
+    he: 'יש לי כמה אנשי קשר בשם הזה. למי מהם?\n\n{options}',
+    en: 'I have more than one contact by that name. Which of them?\n\n{options}'
+  },
+  'group.ambiguous': {
+    he: 'יש לי כמה קבוצות בשם הזה. לאיזו?\n\n{options}',
+    en: 'I have more than one group by that name. Which one?\n\n{options}'
+  },
+  'group.notFound': {
+    he: 'אין לי קבוצה בשם "{name}". לכתוב "קבוצות" כדי לראות מה שמור אצלי.',
+    en: 'I have no group called "{name}". Write "groups" to see what I have saved.'
+  },
+  'group.empty': {
+    he: 'הקבוצה "{name}" ריקה. צריך להוסיף אליה אנשי קשר קודם.',
+    en: 'The group "{name}" is empty. Add contacts to it first.'
+  },
+  'group.memberRemoved': {
+    he: 'הסרתי את {name} ({phone}) מ"{group}".',
+    en: 'I removed {name} ({phone}) from "{group}".'
+  },
+  'group.removeFailed': {
+    he: 'לא הצלחתי להסיר את {name}.',
+    en: 'I could not remove {name}.'
+  },
+
+  // ── Files and contact cards ───────────────────────────────────────────
+  // {what} comes from mediaSubject(), which capitalises for English because
+  // its other use starts a sentence — so this one starts with it too.
+  'media.received': {
+    he: 'קיבלתי את {what}. למי ומתי לשלוח?\nלמשל: תשלח את זה לדני 0501234567 מחר ב-9:00',
+    en: '{what} is here. Who should it go to, and when?\nFor example: send this to Danny 0501234567 tomorrow at 9:00'
+  },
+  'media.namedFile': { he: 'הקובץ {name}', en: 'the file {name}' },
+  'media.horizon': {
+    he: 'קבצים נשמרים אצל וואטסאפ לזמן מוגבל, ולכן אפשר לתזמן אותם עד {days} ימים קדימה בלבד.\n\n' +
+        'אפשר לתזמן את הקובץ למועד קרוב יותר, או לשלוח עכשיו הודעת טקסט בלבד למועד הרחוק.',
+    en: 'WhatsApp keeps a file for a limited time, so a file can only be scheduled up to {days} days ahead.\n\n' +
+        'Schedule the file for a nearer time, or send a text-only message for the later one.'
+  },
+  'media.captionTooLong': {
+    he: 'הכיתוב לקובץ ארוך מדי — עד {max} תווים. אפשר לקצר אותו?',
+    en: 'The caption is too long — {max} characters at most. Could you shorten it?'
+  },
+  'contact.noPhone': {
+    he: 'קיבלתי כרטיס איש קשר אבל בלי מספר טלפון. אפשר לכתוב את המספר?',
+    en: 'That contact card has no phone number on it. Could you type the number?'
+  },
+  'contact.saved': {
+    he: 'שמרתי את {name} ({phone}).\n\nמה לשלוח, ומתי?',
+    en: 'Saved {name} ({phone}).\n\nWhat should I send, and when?'
+  },
+
+  // ── Voice notes ───────────────────────────────────────────────────────
+  'voice.readFailed': {
+    he: 'לא הצלחתי לקרוא את ההקלטה. אפשר לשלוח שוב.',
+    en: 'I could not read that recording. Please send it again.'
+  },
+  'voice.unavailable': {
+    he: 'תמלול הודעות קוליות עדיין לא זמין. אפשר לשלוח את הבקשה כטקסט.',
+    en: 'Voice transcription is not available yet. Please send the request as text.'
+  },
+  'voice.transcribeFailed': {
+    he: 'לא הצלחתי לתמלל את ההקלטה. אפשר לנסות שוב, או לכתוב את הבקשה.',
+    en: 'I could not transcribe that recording. Try again, or write the request out.'
+  },
+  'voice.empty': {
+    he: 'ההקלטה יצאה ריקה. אפשר להקליט שוב.',
+    en: 'That recording came out empty. Please record it again.'
+  },
+  'voice.whichToSend': {
+    he: 'תמללתי: "{transcript}"\n\nמה לשלוח לנמען?\nא. את המילים כהודעת טקסט\nב. את ההקלטה המקורית\n\n' +
+        'להשיב באות. לתשומת לבכם: הקלטה מגיעה רק למי שכתב לבוט ב-24 השעות האחרונות — אחרת תישלח גרסת הטקסט.',
+    en: 'I transcribed: "{transcript}"\n\nWhat should the recipient get?\na. The words, as a text message\nb. The original recording\n\n' +
+        'Reply with a letter. Note: a recording only reaches someone who wrote to the bot in the last 24 hours — otherwise the text version is sent.'
+  },
+  'voice.label.text':  { he: 'טקסט',  en: 'text' },
+  'voice.label.audio': { he: 'הקלטה', en: 'recording' },
+
+  // ── Message types that cannot be scheduled ────────────────────────────
+  'unsupported.sticker': {
+    he: 'מדבקות לא ניתנות לתזמון. אפשר לשלוח טקסט, תמונה, סרטון, מסמך או הקלטה קולית.',
+    en: 'Stickers cannot be scheduled. You can send text, a photo, a video, a document or a voice note.'
+  },
+  'unsupported.location': {
+    he: 'אני לא יודע לתזמן לפי מיקום. אפשר לתזמן לפי שעה — למשל "שלח לדני מחר ב-9:00".',
+    en: 'I cannot schedule by location. I can schedule by time — for example "send to Danny tomorrow at 9:00".'
+  },
+  'unsupported.order': {
+    he: 'הזמנות אינן נתמכות. אפשר לתזמן טקסט, תמונה, סרטון, מסמך או הקלטה קולית.',
+    en: 'Orders are not supported. You can schedule text, a photo, a video, a document or a voice note.'
+  },
+  'unsupported.default': {
+    he: 'אני יודע לתזמן טקסט, תמונות, סרטונים, מסמכים והקלטות קוליות. את זה לא.',
+    en: 'I can schedule text, photos, videos, documents and voice notes. Not this.'
+  },
+
+  // ── Everything else the webhook says ──────────────────────────────────
+  'register.failed': {
+    he: 'לא הצלחתי לרשום את המספר שלך. אפשר לנסות שוב בעוד רגע.',
+    en: 'I could not register your number. Please try again in a moment.'
+  },
+  'command.unrecognised': {
+    he: 'לא זיהיתי את הפקודה.\n\n{help}',
+    en: 'I did not recognise that command.\n\n{help}'
+  },
+  'request.abandoned': {
+    he: 'בסדר, שכחתי מזה.',
+    en: 'All right, forgotten.'
+  },
+  'parse.failed': {
+    he: 'לא הבנתי. אפשר למשל: שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"',
+    en: 'I did not follow. For example: send to Danny 0501234567 tomorrow at 9:00 "see you at the meeting"'
+  },
+  'request.expired': {
+    he: 'עבר קצת זמן מאז ששוחחנו, ואני שומר בקשה פתוחה לזמן קצר בלבד — אז איבדתי את ההקשר.\n\n' +
+        'אפשר לכתוב את הבקשה במלואה? למשל:\nשלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"',
+    en: 'It has been a while, and I only hold an open request for a short time — so I have lost the thread.\n\n' +
+        'Could you write the whole request out? For example:\nsend to Danny 0501234567 tomorrow at 9:00 "see you at the meeting"'
+  },
+  'upgrade.soon': {
+    he: 'שדרוג המנוי עדיין לא זמין כאן. בקרוב.',
+    en: 'Upgrading your plan is not available here yet. Soon.'
+  },
+
   // A file cannot travel inside a template, so the words go alone and the file
   // follows the moment their reply opens the window.
   'delivery.fileWaiting': {

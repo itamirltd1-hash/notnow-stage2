@@ -26,7 +26,7 @@ import { parseNameCommand, runNameCommand, rememberProfileName, getDisplayName }
 import { parseQueueCommand, runQueueCommand, cancelChosenEntry } from '../queue/queueCommands.js';
 import {
   storePendingRequest, peekPendingRequest, clearPendingRequest,
-  mergeEntities, isComplete, isAbandonment, EXPIRED_NOTICE
+  mergeEntities, isComplete, isAbandonment
 } from '../scheduling/pendingRequest.js';
 import {
   detectAmbiguousHour, recallHour, rememberHour, withHour, formatHour
@@ -157,7 +157,7 @@ router.post('/webhook', async (req, res) => {
       console.log(`🆕 Auto-registering new sender ${phone}`);
       const newUser = await autoRegisterSender(phone, detectInitialLanguage(text));
       if (!newUser) {
-        await sendWhatsAppMessage(phone, 'לא הצלחתי לרשום את המספר שלך. אפשר לנסות שוב בעוד רגע.');
+        await sendWhatsAppMessage(phone, t('register.failed', detectInitialLanguage(text)));
         return;
       }
       req.userId = newUser.user_id;
@@ -183,7 +183,7 @@ router.post('/webhook', async (req, res) => {
         phone,
         asRecipient ? recipientGreeting(languageForPhone(phone))
           : isNewUser ? welcomeMessage(profileName, lang)
-          : helpMessage()
+          : helpMessage(lang)
       );
       return;
     }
@@ -248,13 +248,13 @@ router.post('/webhook', async (req, res) => {
       }
     }
     if (type === 'text' && isHelpRequest(text)) {
-      await sendWhatsAppMessage(phone, helpMessage());
+      await sendWhatsAppMessage(phone, helpMessage(lang));
       return;
     }
 
     // A thank-you is not a question about the product.
     if (type === 'text' && isCourtesy(text)) {
-      await sendWhatsAppMessage(phone, courtesyReply());
+      await sendWhatsAppMessage(phone, courtesyReply(lang));
       return;
     }
 
@@ -309,7 +309,7 @@ router.post('/webhook', async (req, res) => {
       } else if (looksLikeGroupCommand(text)) {
         // Opens with a management verb but matches no command — a wording slip.
         // Showing the syntax beats sending it to the scheduler to fail there.
-        await sendWhatsAppMessage(phone, `לא זיהיתי את הפקודה.\n\n${SYNTAX_HELP}`);
+        await sendWhatsAppMessage(phone, t('command.unrecognised', lang, { help: SYNTAX_HELP(lang) }));
         return;
       }
     }
@@ -324,7 +324,10 @@ router.post('/webhook', async (req, res) => {
     // Anything the service cannot schedule is said out loud. Silence here
     // reads as a fault, and it is how a shared contact card was lost before.
     if (messageData.unsupported) {
-      await sendWhatsAppMessage(phone, unsupportedTypeReply(messageData.unsupported));
+      // 'system' is WhatsApp telling us a number changed. It is addressed to
+      // us, not sent by the person, so there is nothing to answer.
+      const reply = unsupportedTypeReply(messageData.unsupported, lang);
+      if (reply) await sendWhatsAppMessage(phone, reply);
       return;
     }
 
@@ -334,13 +337,10 @@ router.post('/webhook', async (req, res) => {
     if (type === 'image' || type === 'video' || type === 'document') {
       await storePendingMedia(req.userId, phone, mediaId, type, text, messageData.filename);
       if (!text) {
-        const what = type === 'image' ? 'התמונה' : type === 'video' ? 'הסרטון'
-          : messageData.filename ? `הקובץ ${messageData.filename}` : 'המסמך';
-        await sendWhatsAppMessage(
-          phone,
-          `קיבלתי את ${what}. למי ומתי לשלוח?\n` +
-          `למשל: תשלח את זה לדני 0501234567 מחר ב-9:00`
-        );
+        const what = messageData.filename && type === 'document'
+          ? t('media.namedFile', lang, { name: messageData.filename })
+          : mediaSubject(type, lang).subject;
+        await sendWhatsAppMessage(phone, t('media.received', lang, { what }));
         return;
       }
     }
@@ -365,7 +365,7 @@ router.post('/webhook', async (req, res) => {
     // so, rather than having it merge into whatever they say next.
     if (type === 'text' && isAbandonment(text)) {
       await clearPendingRequest(phone);
-      await sendWhatsAppMessage(phone, 'בסדר, שכחתי מזה.');
+      await sendWhatsAppMessage(phone, t('request.abandoned', lang));
       return;
     }
 
@@ -389,7 +389,7 @@ router.post('/webhook', async (req, res) => {
       // The question is gone and this reply cannot stand on its own. Saying so
       // beats asking them to repeat themselves for no visible reason.
       await clearPendingRequest(phone);
-      await sendWhatsAppMessage(phone, EXPIRED_NOTICE);
+      await sendWhatsAppMessage(phone, t('request.expired', lang));
       return;
     }
 
@@ -426,7 +426,7 @@ router.post('/webhook', async (req, res) => {
       // Claude usually phrases the clarification better, and in the user's
       // own language — prefer it over our generic fallback.
       const errorMsg = intentResult.error
-        || 'לא הבנתי. אפשר למשל: שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"';
+        || t('parse.failed', lang);
       console.log(
         `⚠️  Not acting (success=${intentResult.success}, ` +
         `confidence=${intentResult.confidence}), replying:`, errorMsg
@@ -484,17 +484,17 @@ router.post('/webhook', async (req, res) => {
         // Grounded in what the service actually does, rather than in whatever
         // the scheduling model imagines about it.
         const answer = await answerProductQuestion(text);
-        await sendWhatsAppMessage(phone, answer || helpMessage());
+        await sendWhatsAppMessage(phone, answer || helpMessage(lang));
         break;
       }
 
       case 'UPGRADE_TIER':
         // TODO: Cycle 4 feature
-        await sendWhatsAppMessage(phone, 'Upgrade feature coming soon! Stay tuned.');
+        await sendWhatsAppMessage(phone, t('upgrade.soon', lang));
         break;
 
       default:
-        await sendWhatsAppMessage(phone, 'Intent not recognized. Please try again.');
+        await sendWhatsAppMessage(phone, t('parse.failed', lang));
     }
   } catch (error) {
     // Response was already sent above; only log here.
@@ -521,9 +521,11 @@ async function askWhichHour(userId, senderPhone, entities, ambiguous) {
 
   await sendWhatsAppMessage(
     senderPhone,
-    `${formatHour(hour, minutes)} בבוקר או בערב?\n` +
-    `1. ${formatHour(morning, minutes)}\n` +
-    `2. ${formatHour(evening, minutes)}`
+    t('time.morningOrEvening', await getLanguage(userId), {
+      hour: formatHour(hour, minutes),
+      morning: formatHour(morning, minutes),
+      evening: formatHour(evening, minutes)
+    })
   );
 }
 
@@ -533,7 +535,8 @@ async function askWhichHour(userId, senderPhone, entities, ambiguous) {
  * hours later, when there is nothing left to correct.
  */
 async function askWhichTime(userId, senderPhone, entities, options) {
-  const label = iso => new Date(iso).toLocaleTimeString('he-IL', {
+  const lang = await getLanguage(userId);
+  const label = iso => new Date(iso).toLocaleTimeString(lang === 'en' ? 'en-GB' : 'he-IL', {
     timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit'
   });
 
@@ -544,9 +547,9 @@ async function askWhichTime(userId, senderPhone, entities, options) {
 
   await sendWhatsAppMessage(
     senderPhone,
-    `באיזו שעה בדיוק?\n` +
-    formatOptions(options.map(iso => ({ iso })), o => label(o.iso)) +
-    `\n\nלהשיב באות.`
+    t('time.whichExactly', lang, {
+      options: formatOptions(options.map(iso => ({ iso })), o => label(o.iso))
+    })
   );
 }
 
@@ -556,10 +559,12 @@ async function askWhichTime(userId, senderPhone, entities, options) {
  * where it stopped rather than starting over.
  */
 async function handleChoice(userId, senderPhone, choice) {
+  const lang = await getLanguage(userId);
+
   if (choice.kind === 'out_of_range') {
     await sendWhatsAppMessage(
       senderPhone,
-      `יש ${choice.optionCount} אפשרויות. להשיב באות שמופיעה ברשימה.`
+      t('choice.outOfRange', lang, { count: choice.optionCount })
     );
     return;
   }
@@ -584,8 +589,9 @@ async function handleChoice(userId, senderPhone, choice) {
       await sendWhatsAppMessage(
         senderPhone,
         removed
-          ? `הסרתי את ${option.name} (${option.phone}) מ"${payload.groupName}".`
-          : `לא הצלחתי להסיר את ${option.name}.`
+          ? t('group.memberRemoved', lang,
+              { name: option.name, phone: option.phone, group: payload.groupName })
+          : t('group.removeFailed', lang, { name: option.name })
       );
       return;
     }
@@ -621,20 +627,22 @@ async function handleChoice(userId, senderPhone, choice) {
     }
 
     default:
-      await sendWhatsAppMessage(senderPhone, 'לא הצלחתי להשלים את הבחירה. אפשר לשלוח את הבקשה שוב.');
+      await sendWhatsAppMessage(senderPhone, t('choice.failed', lang));
   }
 }
 
-const UNSUPPORTED_REPLY = {
-  sticker: 'מדבקות לא ניתנות לתזמון. אפשר לשלוח טקסט, תמונה, סרטון, מסמך או הקלטה קולית.',
-  location: 'אני לא יודע לתזמן לפי מיקום. אפשר לתזמן לפי שעה — למשל "שלח לדני מחר ב-9:00".',
-  order: 'הזמנות אינן נתמכות. אפשר לתזמן טקסט, תמונה, סרטון, מסמך או הקלטה קולית.',
+// A 'system' message is WhatsApp telling us someone changed their number.
+// It is addressed to us, not to the sender, and answering it would be noise.
+const UNSUPPORTED_KEYS = {
+  sticker: 'unsupported.sticker',
+  location: 'unsupported.location',
+  order: 'unsupported.order',
   system: null
 };
 
-function unsupportedTypeReply(kind) {
-  return UNSUPPORTED_REPLY[kind]
-    || 'אני יודע לתזמן טקסט, תמונות, סרטונים, מסמכים והקלטות קוליות. את זה לא.';
+function unsupportedTypeReply(kind, lang = 'he') {
+  if (kind in UNSUPPORTED_KEYS && UNSUPPORTED_KEYS[kind] === null) return null;
+  return t(UNSUPPORTED_KEYS[kind] || 'unsupported.default', lang);
 }
 
 /**
@@ -647,11 +655,10 @@ function unsupportedTypeReply(kind) {
 async function handleSharedContact(userId, senderPhone, contact) {
   const phone = normalizePhoneNumber(contact?.phone);
 
+  const lang = await getLanguage(userId);
+
   if (!phone) {
-    await sendWhatsAppMessage(
-      senderPhone,
-      'קיבלתי כרטיס איש קשר אבל בלי מספר טלפון. אפשר לכתוב את המספר?'
-    );
+    await sendWhatsAppMessage(senderPhone, t('contact.noPhone', lang));
     return;
   }
 
@@ -669,7 +676,7 @@ async function handleSharedContact(userId, senderPhone, contact) {
 
   await sendWhatsAppMessage(
     senderPhone,
-    `שמרתי את ${name || phone} (${phone}).\n\nמה לשלוח, ומתי?`
+    t('contact.saved', lang, { name: name || phone, phone })
   );
 }
 
@@ -683,32 +690,36 @@ async function handleSharedContact(userId, senderPhone, contact) {
  * otherwise it has already replied and returns null.
  */
 async function handleVoiceNote(userId, phone, mediaId) {
+  const lang = await getLanguage(userId);
+
   if (!mediaId) {
-    await sendWhatsAppMessage(phone, 'לא הצלחתי לקרוא את ההקלטה. אפשר לשלוח שוב.');
+    await sendWhatsAppMessage(phone, t('voice.readFailed', lang));
     return null;
   }
 
   if (!isTranscriptionAvailable()) {
-    await sendWhatsAppMessage(phone, 'תמלול הודעות קוליות עדיין לא זמין. שלח את הבקשה כטקסט.');
+    await sendWhatsAppMessage(phone, t('voice.unavailable', lang));
     return null;
   }
 
   let transcript;
   try {
     const audio = await downloadMedia(mediaId);
-    transcript = await transcribeAudio(audio.buffer, audio.mimeType, 'he');
+    // Telling Whisper which language to expect is worth more than letting it
+    // guess: a short Hebrew clip is often heard as Arabic, and vice versa.
+    transcript = await transcribeAudio(audio.buffer, audio.mimeType, lang);
   } catch (error) {
     console.error('Voice note failed:', error.message);
-    await sendWhatsAppMessage(phone, 'לא הצלחתי לתמלל את ההקלטה. אפשר לנסות שוב, או לכתוב את הבקשה.');
+    await sendWhatsAppMessage(phone, t('voice.transcribeFailed', lang));
     return null;
   }
 
   if (!transcript) {
-    await sendWhatsAppMessage(phone, 'ההקלטה יצאה ריקה. אפשר להקליט שוב.');
+    await sendWhatsAppMessage(phone, t('voice.empty', lang));
     return null;
   }
 
-  const intentResult = await parseSchedulingIntent(transcript, 'he');
+  const intentResult = await parseSchedulingIntent(transcript, lang);
 
   // Not a scheduling request — let the normal path answer it.
   if (!intentResult.success || intentResult.intent !== 'SCHEDULE_MESSAGE'
@@ -718,23 +729,15 @@ async function handleVoiceNote(userId, phone, mediaId) {
 
   await storeChoice(userId, phone, 'voice_delivery', {
     options: [
-      { mode: 'text', label: 'טקסט' },
-      { mode: 'audio', label: 'הקלטה' }
+      { mode: 'text', label: t('voice.label.text', lang) },
+      { mode: 'audio', label: t('voice.label.audio', lang) }
     ],
     entities: intentResult.entities,
     mediaId,
     transcript
   });
 
-  await sendWhatsAppMessage(
-    phone,
-    `תמללתי: "${transcript}"\n\n` +
-    `מה לשלוח לנמען?\n` +
-    `א. את המילים כהודעת טקסט\n` +
-    `ב. את ההקלטה המקורית\n\n` +
-    `להשיב באות. לתשומת לבכם: הקלטה מגיעה רק למי שכתב לבוט ב-24 השעות האחרונות — ` +
-    `אחרת תישלח גרסת הטקסט.`
-  );
+  await sendWhatsAppMessage(phone, t('voice.whichToSend', lang, { transcript }));
 
   return null;
 }
@@ -746,6 +749,7 @@ async function handleVoiceNote(userId, phone, mediaId) {
  * request is ambiguous or names someone we have no number for.
  */
 async function resolveRecipients(userId, entities) {
+  const lang = await getLanguage(userId);
   const groupName = entities.recipient_group;
 
   if (groupName) {
@@ -753,9 +757,8 @@ async function resolveRecipients(userId, entities) {
 
     if (candidates.length > 1) {
       return {
-        reply: `יש לי כמה קבוצות בשם הזה. לאיזו?\n\n` +
-          formatOptions(candidates, g => g.name) +
-          `\n\nלהשיב באות.`,
+        reply: t('group.ambiguous', lang, { options: formatOptions(candidates, g => g.name) })
+          + t('choice.replyWithLetter', lang),
         choice: {
           kind: 'schedule_group',
           options: candidates.map(g => ({ name: g.name, group_id: g.group_id }))
@@ -763,12 +766,12 @@ async function resolveRecipients(userId, entities) {
       };
     }
     if (!match) {
-      return { reply: `אין לי קבוצה בשם "${groupName}". שלח "קבוצות" כדי לראות מה שמור אצלי.` };
+      return { reply: t('group.notFound', lang, { name: groupName }) };
     }
 
     const members = await getGroupMembers(userId, match.group_id);
     if (members.length === 0) {
-      return { reply: `הקבוצה "${match.name}" ריקה. צריך להוסיף אליה אנשי קשר קודם.` };
+      return { reply: t('group.empty', lang, { name: match.name }) };
     }
 
     return {
@@ -792,9 +795,9 @@ async function resolveRecipients(userId, entities) {
       console.log(`   Resolved "${entities.recipient_name}" → ${recipientPhone}`);
     } else if (candidates.length > 1) {
       return {
-        reply: `יש לי כמה אנשי קשר בשם הזה. למי מהם?\n\n` +
-          formatOptions(candidates, c => `${c.name} — ${c.phone_number}`) +
-          `\n\nלהשיב באות.`,
+        reply: t('contact.ambiguous', lang, {
+          options: formatOptions(candidates, c => `${c.name} — ${c.phone_number}`)
+        }) + t('choice.replyWithLetter', lang),
         choice: {
           kind: 'schedule_recipient',
           options: candidates.map(c => ({ name: c.name, phone: c.phone_number }))
@@ -820,6 +823,7 @@ async function resolveRecipients(userId, entities) {
 async function handleScheduleMessage(userId, senderPhone, entities, mediaId = null, mediaType = null, mediaFilename = null) {
   try {
     const { message_body, scheduled_timestamp, delivery_channel } = entities;
+    const lang = await getLanguage(userId);
     console.log('   Entities:', JSON.stringify(entities));
 
     // "תשלח את זה לדני מחר" refers to the photo sent a moment ago.
@@ -861,10 +865,10 @@ async function handleScheduleMessage(userId, senderPhone, entities, mediaId = nu
     const { recipients, group } = resolved;
 
     const missing = [];
-    if (recipients.length === 0) missing.push('מספר הנמען');
+    if (recipients.length === 0) missing.push(t('schedule.missing.recipient', lang));
     // An attached photo or recording is the content; text is then optional.
-    if (!message_body && !mediaId) missing.push('תוכן ההודעה');
-    if (!scheduled_timestamp) missing.push('מועד השליחה');
+    if (!message_body && !mediaId) missing.push(t('schedule.missing.content', lang));
+    if (!scheduled_timestamp) missing.push(t('schedule.missing.time', lang));
 
     if (missing.length > 0) {
       // Hold what is already understood, so the answer completes this request
@@ -872,9 +876,12 @@ async function handleScheduleMessage(userId, senderPhone, entities, mediaId = nu
       await storePendingRequest(userId, senderPhone, entities, mediaId, mediaType);
 
       const hint = resolved.missingRecipientName
-        ? `\n\nאין לי מספר שמור עבור ${resolved.missingRecipientName}. אפשר לשלוח פעם אחת עם המספר, ואשמור אותו.`
+        ? t('schedule.missing.hint', lang, { name: resolved.missingRecipientName })
         : '';
-      await sendWhatsAppMessage(senderPhone, `חסר לי ${missing.join(' ו')}.${hint}`);
+      await sendWhatsAppMessage(senderPhone, t('schedule.missing', lang, {
+        missing: missing.join(t('schedule.missing.join', lang)),
+        hint
+      }));
       return;
     }
 
@@ -882,31 +889,26 @@ async function handleScheduleMessage(userId, senderPhone, entities, mediaId = nu
     // typo — sending immediately would surprise the user more than asking.
     const scheduledAt = new Date(scheduled_timestamp);
     if (Number.isNaN(scheduledAt.getTime())) {
-      await sendWhatsAppMessage(senderPhone, 'לא הצלחתי להבין את המועד. אפשר למשל "מחר ב-9:00" או "עוד שעתיים".');
+      await sendWhatsAppMessage(senderPhone, t('time.unparseable', lang));
       return;
     }
     if (scheduledAt.getTime() < Date.now() - 60_000) {
-      const when = scheduledAt.toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' });
-      await sendWhatsAppMessage(senderPhone, `המועד שביקשת (${when}) כבר עבר. מתי לשלוח?`);
+      await sendWhatsAppMessage(
+        senderPhone,
+        t('time.past', lang, { when: formatWhen(scheduledAt, lang) })
+      );
       return;
     }
 
     // Meta keeps an uploaded file for about a month, so a photo scheduled
     // beyond that would be queued only to fail on the day. Say so now.
     if (mediaId && !isWithinMediaHorizon(scheduledAt)) {
-      await sendWhatsAppMessage(
-        senderPhone,
-        `קבצים נשמרים אצל וואטסאפ לזמן מוגבל, ולכן אפשר לתזמן אותם עד ${MAX_MEDIA_DAYS} ימים קדימה בלבד.\n\n` +
-        `אפשר לתזמן את הקובץ למועד קרוב יותר, או לשלוח עכשיו הודעת טקסט בלבד למועד הרחוק.`
-      );
+      await sendWhatsAppMessage(senderPhone, t('media.horizon', lang, { days: MAX_MEDIA_DAYS }));
       return;
     }
 
     if (mediaId && message_body && message_body.length > MAX_CAPTION) {
-      await sendWhatsAppMessage(
-        senderPhone,
-        `הכיתוב לקובץ ארוך מדי — עד ${MAX_CAPTION} תווים. אפשר לקצר אותו?`
-      );
+      await sendWhatsAppMessage(senderPhone, t('media.captionTooLong', lang, { max: MAX_CAPTION }));
       return;
     }
 
@@ -918,11 +920,12 @@ async function handleScheduleMessage(userId, senderPhone, entities, mediaId = nu
     if (!senderExempt && billable.length > 0) {
       const quota = await checkUserQuota(userId);
       if (!quota.allowed || quota.remaining < billable.length) {
-        await sendWhatsAppMessage(
-          senderPhone,
-          `המכסה החודשית לא מספיקה: נדרשות ${billable.length} הודעות ונשארו ${quota.remaining ?? 0} ` +
-          `מתוך ${quota.limit ?? '?'} (${quota.tier ?? 'FREE'}).`
-        );
+        await sendWhatsAppMessage(senderPhone, t('schedule.quotaShort', lang, {
+          needed: billable.length,
+          left: quota.remaining ?? 0,
+          limit: quota.limit ?? '?',
+          tier: quota.tier ?? 'FREE'
+        }));
         return;
       }
     }
@@ -1002,7 +1005,7 @@ async function handleScheduleMessage(userId, senderPhone, entities, mediaId = nu
         scheduledAt: scheduled_timestamp,
         recipients,
         body: message_body,
-        lang: await getLanguage(userId)
+        lang
       })
         + (warning || '')
     );
@@ -1013,7 +1016,7 @@ async function handleScheduleMessage(userId, senderPhone, entities, mediaId = nu
     );
   } catch (error) {
     console.error('Error scheduling message:', error.message, error.stack);
-    await sendWhatsAppMessage(senderPhone, 'לא הצלחתי לתזמן את ההודעה. אפשר לנסות שוב.');
+    await sendWhatsAppMessage(senderPhone, t('schedule.failed', await getLanguage(userId)));
   }
 }
 

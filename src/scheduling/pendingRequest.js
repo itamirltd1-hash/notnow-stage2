@@ -89,14 +89,3 @@ export function isComplete(entities = {}, hasMedia = false) {
   const hasContent = Boolean(entities.message_body) || hasMedia;
   return hasRecipient && hasContent && Boolean(entities.scheduled_timestamp);
 }
-
-/**
- * What the bot forgot, said plainly.
- *
- * Someone referring back to a conversation the bot no longer holds is better
- * told so than asked to repeat themselves for no visible reason.
- */
-export const EXPIRED_NOTICE =
-  'עבר קצת זמן מאז ששוחחנו, ואני שומר בקשה פתוחה לזמן קצר בלבד — אז איבדתי ' +
-  'את ההקשר.\n\nאפשר לכתוב את הבקשה במלואה? למשל:\n' +
-  'שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"';

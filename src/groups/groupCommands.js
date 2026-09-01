@@ -5,6 +5,7 @@ import {
 import { normalizePhoneNumber } from '../auth/userContextExtractor.js';
 import { formatOptions } from '../meta/pendingChoice.js';
 import pool from '../db/pool.js';
+import { t } from '../i18n/messages.js';
 
 // Management commands are matched by pattern rather than sent to the model.
 // Scheduling is fuzzy and benefits from a model; management is precise and
@@ -147,13 +148,9 @@ export async function describeGroups(userId) {
   return `יש לך ${count}:\n${lines.join('\n')}`;
 }
 
-export const SYNTAX_HELP =
-  'פקודות קבוצות:\n' +
-  '• צור קבוצה טסטרים\n' +
-  '• הוסף לטסטרים 0501111111 דנה\n' +
-  '• מי בטסטרים\n' +
-  '• מחק מטסטרים דנה\n' +
-  '• קבוצות — כל הקבוצות שלך';
+export function SYNTAX_HELP(lang = 'he') {
+  return t('groups.syntax', lang);
+}
 
 /**
  * Run a recognised command and return the reply to send back.
@@ -175,7 +172,7 @@ export async function runGroupCommand(userId, command) {
       }
     }
     if (command.incomplete) {
-      lines.push(`\nלא הבנתי את השורה: "${command.incomplete}"\n\n${SYNTAX_HELP}`);
+      lines.push(`\nלא הבנתי את השורה: "${command.incomplete}"\n\n${SYNTAX_HELP()}`);
     }
     return lines.join('\n');
   }
