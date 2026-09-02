@@ -37,14 +37,30 @@ test('every consent template says whether it asks the question itself', () => {
   }
 });
 
-test('consent never resolves to a template that asks nothing', () => {
+// The invariant is not that consent always reaches a consent template — with
+// one template on the account it cannot. It is that the caller is told the
+// truth about which it got, because that decides whether the question is
+// passed into the slot or only the sender's name.
+test('a fallback to the shared template reports what that template is', () => {
+  const shared = resolveTemplate('delivery', 'he');
+
   for (const lang of SUPPORTED_LANGUAGES) {
-    assert.equal(resolveTemplate('consent', lang).carriesTheQuestion, true, lang);
+    const consent = resolveTemplate('consent', lang);
+    if (consent.name === shared.name && consent.language === shared.language) {
+      assert.equal(
+        consent.carriesTheQuestion, shared.carriesTheQuestion,
+        `consent/${lang} fell back to the shared template but disagrees about its role`
+      );
+    }
   }
 });
 
-test('every gap is reported in terms of what a recipient would see', () => {
+// None of these gaps are visible from the server: they only show up in what
+// a recipient reads. So each warning has to name the variable to set and the
+// consequence of leaving it, not just say something is missing.
+test('every gap names a variable and what the recipient would see', () => {
   for (const warning of templateWarnings()) {
-    assert.match(warning, /^META_[A-Z_]+ is not set, so /, warning);
+    assert.match(warning, /META_[A-Z_]+/, warning);
+    assert.match(warning, / so /, warning);
   }
 });

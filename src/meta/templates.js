@@ -11,18 +11,14 @@
  * for, which Meta rejects outright rather than falling back.
  *
  * And asking permission is not the same sentence as delivering a message.
- * One template does both today, and its body is the consent question — so a
- * delivered message arrives inside "reply 1 to receive the message", quoting
- * the message the recipient is already reading.
+ * One template does both, and which sentence it holds is not something this
+ * file can know: the same name exists on several accounts in this project
+ * with different bodies, and the account that sends changed underneath it.
+ * So the role is declared in the environment, not inferred from the name.
  *
  * Which template a send actually reaches is decided by the WABA behind the
- * phone number ID, not by any name here. The same name exists on more than
- * one account in this project with different bodies, so a body read on the
- * wrong account describes a template this code never touches.
- *
- * Everything defaults to what is approved today, so an unset variable keeps
- * the current behaviour rather than sending into a template that does not
- * exist. Nothing switches to a template until someone says it is approved.
+ * phone number ID. A body read on the wrong account describes a template this
+ * code never touches — that mistake cost an afternoon and two wrong commits.
  *
  * The bodies are deliberately not written down here. The last comment that
  * recorded one went stale when the template was edited, and the code went on
@@ -30,49 +26,50 @@
  * for which job.
  */
 
-// The only usable template on the account that actually sends. Its body asks
-// the whole consent question — greeting, who is asking, and the two options —
-// so its {{2}} wants a name, not a sentence.
-const CONSENT_HE = {
+// The one template we know exists on whichever account is sending.
+//
+// Which job its wording serves is not a property of the name — it changed
+// when the sending account changed, and guessing it wrong is expensive in
+// both directions: a consent request sent through a delivery template asks
+// nothing at all, and a delivered message sent through a consent template
+// arrives inside "reply 1 to receive the message". So it is declared, not
+// inferred. META_TEMPLATE_ROLE is 'delivery' or 'consent'.
+const SHARED_ROLE = process.env.META_TEMPLATE_ROLE === 'consent' ? 'consent' : 'delivery';
+
+const SHARED = {
   name: process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder',
   language: process.env.META_TEMPLATE_LANGUAGE || 'he',
-  carriesTheQuestion: true
+  // A consent template asks the whole question itself and wants only the
+  // sender's name in its slot. A delivery template asks nothing, so the
+  // question has to be passed into it or the recipient is sent a bare name.
+  carriesTheQuestion: SHARED_ROLE === 'consent'
 };
 
-const CONSENT_EN = process.env.META_CONSENT_TEMPLATE_NAME_EN
-  ? {
-      name: process.env.META_CONSENT_TEMPLATE_NAME_EN,
-      language: process.env.META_CONSENT_TEMPLATE_LANGUAGE_EN || 'en_US',
-      carriesTheQuestion: true
-    }
-  : null;
+function named(nameVar, langVar, fallbackLang, carriesTheQuestion) {
+  return process.env[nameVar]
+    ? {
+        name: process.env[nameVar],
+        language: process.env[langVar] || fallbackLang,
+        carriesTheQuestion
+      }
+    : null;
+}
 
-// A delivery template introduces {{2}} as the message being delivered. It
-// asks nothing, so a consent request must never fall through to it holding
-// only a name.
-const DELIVERY_HE = process.env.META_DELIVERY_TEMPLATE_NAME
-  ? {
-      name: process.env.META_DELIVERY_TEMPLATE_NAME,
-      language: process.env.META_DELIVERY_TEMPLATE_LANGUAGE || 'he',
-      carriesTheQuestion: false
-    }
-  : null;
+const CONSENT_HE = named('META_CONSENT_TEMPLATE_NAME', 'META_CONSENT_TEMPLATE_LANGUAGE', 'he', true)
+  || (SHARED_ROLE === 'consent' ? SHARED : null);
+const CONSENT_EN = named('META_CONSENT_TEMPLATE_NAME_EN', 'META_CONSENT_TEMPLATE_LANGUAGE_EN', 'en_US', true);
 
-const DELIVERY_EN = process.env.META_DELIVERY_TEMPLATE_NAME_EN
-  ? {
-      name: process.env.META_DELIVERY_TEMPLATE_NAME_EN,
-      language: process.env.META_DELIVERY_TEMPLATE_LANGUAGE_EN || 'en_US',
-      carriesTheQuestion: false
-    }
-  : null;
+const DELIVERY_HE = named('META_DELIVERY_TEMPLATE_NAME', 'META_DELIVERY_TEMPLATE_LANGUAGE', 'he', false)
+  || (SHARED_ROLE === 'delivery' ? SHARED : null);
+const DELIVERY_EN = named('META_DELIVERY_TEMPLATE_NAME_EN', 'META_DELIVERY_TEMPLATE_LANGUAGE_EN', 'en_US', false);
 
 // Order matters: the right job first, then the right language, then the one
 // template known to exist.
 const CHAINS = {
-  'delivery|he': [DELIVERY_HE, CONSENT_HE],
-  'delivery|en': [DELIVERY_EN, DELIVERY_HE, CONSENT_EN, CONSENT_HE],
-  'consent|he':  [CONSENT_HE],
-  'consent|en':  [CONSENT_EN, CONSENT_HE]
+  'delivery|he': [DELIVERY_HE, SHARED],
+  'delivery|en': [DELIVERY_EN, DELIVERY_HE, SHARED],
+  'consent|he':  [CONSENT_HE, SHARED],
+  'consent|en':  [CONSENT_EN, CONSENT_HE, SHARED]
 };
 
 /**
@@ -91,8 +88,8 @@ const CHAINS = {
  * name where the question should have been.
  */
 export function resolveTemplate(job, lang = 'he') {
-  const chain = CHAINS[`${job}|${lang}`] || CHAINS[`${job}|he`] || CHAINS['consent|he'];
-  return chain.find(Boolean) || CONSENT_HE;
+  const chain = CHAINS[`${job}|${lang}`] || CHAINS[`${job}|he`] || CHAINS['delivery|he'];
+  return chain.find(Boolean) || SHARED;
 }
 
 /**
@@ -104,9 +101,16 @@ export function templateWarnings() {
 
   if (!DELIVERY_HE) {
     warnings.push(
-      'META_DELIVERY_TEMPLATE_NAME is not set, so a scheduled message goes out through ' +
-      `"${CONSENT_HE.name}", which asks the recipient to reply 1 to receive the message ` +
-      'it has already shown them.'
+      `META_TEMPLATE_ROLE says "${SHARED_ROLE}" and META_DELIVERY_TEMPLATE_NAME is not set, ` +
+      `so a scheduled message goes out through "${SHARED.name}", which asks the recipient ` +
+      'to reply 1 to receive the message it has already shown them.'
+    );
+  }
+  if (!CONSENT_HE) {
+    warnings.push(
+      `META_TEMPLATE_ROLE says "${SHARED_ROLE}" and META_CONSENT_TEMPLATE_NAME is not set, ` +
+      `so a consent request goes out through "${SHARED.name}", whose body announces the ` +
+      'message it is asking permission to send.'
     );
   }
   if (!CONSENT_EN) {
