@@ -112,6 +112,19 @@ router.post('/webhook', async (req, res) => {
       return;
     }
 
+    // Subscribing to a new business account does not unsubscribe the old one,
+    // so webhooks can keep arriving for a number this service no longer sends
+    // from. Answering one would reply from the current number to someone who
+    // wrote to a different one — a conversation split across two numbers,
+    // where the reply appears to come from a stranger.
+    const ours = process.env.META_PHONE_NUMBER_ID;
+    if (businessPhoneId && ours && businessPhoneId !== ours) {
+      console.warn(
+        `↩️  Ignoring a message to ${businessPhoneId}; this service sends from ${ours}`
+      );
+      return;
+    }
+
     // This inbound message opens a 24-hour window for free-form replies
     await recordInboundMessage(phone, businessPhoneId);
 
