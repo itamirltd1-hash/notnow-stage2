@@ -1,4 +1,5 @@
 import pool from '../db/pool.js';
+import { notifySenderOfFailure } from '../dispatcher/failureNotice.js';
 
 /**
  * Apply one Meta delivery-status event to its queued message.
@@ -27,7 +28,7 @@ export async function recordDeliveryStatus(event) {
                 error_message = $2,
                 updated_at = NOW()
           WHERE provider_message_id = $3
-          RETURNING queue_id, user_id, recipient_phone`,
+          RETURNING queue_id, user_id, recipient_phone, recipient_name, scheduled_at`,
         [errorCode, errorMessage, messageId]
       );
     } else if (status === 'delivered' || status === 'read') {
@@ -62,6 +63,19 @@ export async function recordDeliveryStatus(event) {
           error_message: errorMessage
         })]
       );
+
+      // This is the quiet failure. Meta returned 200 on send, the dispatcher
+      // reported success, and the row only turns to 'failed' here — minutes
+      // later, in a webhook nobody is watching. Without this the sender goes
+      // on believing the message went out, which is worse than an error
+      // because nothing ever looked wrong.
+      await notifySenderOfFailure({
+        userId: row.user_id,
+        recipientName: row.recipient_name,
+        recipientPhone: row.recipient_phone,
+        scheduledAt: row.scheduled_at,
+        errorCode: Number(errorCode)
+      });
     } else {
       console.log(`📬 queue_id=${row.queue_id} → ${status}`);
     }

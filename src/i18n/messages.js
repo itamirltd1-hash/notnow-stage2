@@ -269,6 +269,37 @@ const STRINGS = {
     en: '\n\n{remaining} messages remain in this month’s quota, which renews on {date}.'
   },
 
+  // ── When a message does not arrive ────────────────────────────────────
+  // Meta returns 200 on send and reports the outcome minutes later. Without
+  // this the queue row turns to 'failed' and the sender goes on believing it
+  // went out — which is worse than an error, because nothing looks wrong.
+  'delivery.failed': {
+    he: 'ההודעה ל{who} שתוזמנה ל-{when} לא נשלחה.\n\n{reason}',
+    en: 'The message to {who}, scheduled for {when}, was not sent.\n\n{reason}'
+  },
+  // Whose problem it is decides what the sentence should say. Retrying a
+  // billing failure wastes the sender's time; retrying a hiccup does not.
+  'delivery.reason.billing': {
+    he: 'זו תקלה בהגדרות החשבון שלנו מול וואטסאפ, לא משהו שתלוי בך. אנחנו מטפלים — ואפשר לתזמן שוב אחר כך.',
+    en: 'This is a problem with our own WhatsApp account settings, not with anything you did. We are on it — you can schedule it again later.'
+  },
+  'delivery.reason.unreachable': {
+    he: 'המספר של {who} לא מקבל הודעות בוואטסאפ. כדאי לבדוק שהוא נכון.',
+    en: '{who}’s number cannot receive WhatsApp messages. It is worth checking that it is right.'
+  },
+  'delivery.reason.restricted': {
+    he: 'המספר שממנו אנחנו שולחים מוגבל כרגע על ידי וואטסאפ. אנחנו מטפלים.',
+    en: 'The number we send from is currently restricted by WhatsApp. We are on it.'
+  },
+  'delivery.reason.window': {
+    he: 'וואטסאפ לא אישרה את השליחה לנמען הזה כרגע. אפשר לנסות לתזמן שוב.',
+    en: 'WhatsApp would not accept a message to this recipient just now. You can schedule it again.'
+  },
+  'delivery.reason.unknown': {
+    he: 'וואטסאפ לא קיבלה את ההודעה ולא אמרה למה. אפשר לנסות לתזמן שוב.',
+    en: 'WhatsApp did not accept the message and did not say why. You can schedule it again.'
+  },
+
   // ── Terms ─────────────────────────────────────────────────────────────
   // A wall of legal text in a chat window is read by nobody, so the document
   // lives on a page and the chat carries the link and the decision.

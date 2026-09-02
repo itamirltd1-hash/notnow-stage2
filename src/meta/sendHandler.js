@@ -9,8 +9,9 @@ import axios from 'axios';
  * Business eligibility payment issue" does not tell anyone to open billing.
  */
 const ERROR_GUIDANCE = {
-  131042: 'No payment method on the WhatsApp account. Template messages are billable — ' +
-          'add one under WhatsApp Manager → Payment settings.',
+  131042: 'The WhatsApp account cannot be billed. Either no payment method, or — the ' +
+          'case seen in practice — its country and currency were never chosen. Meta ' +
+          'puts the exact link to fix it in the error_data.details of the status webhook.',
   131047: 'Outside the 24-hour window and no template was used. Free-form text only ' +
           'reaches someone who wrote to us in the last 24 hours.',
   132000: 'The template expects a different number of parameters than were sent.',
