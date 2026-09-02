@@ -21,7 +21,11 @@ import {
   isPendingRecipient, isKnownRecipient, isGroupsListQuestion, describeGroups,
   SYNTAX_HELP
 } from '../groups/groupCommands.js';
-import { isGreeting, isHelpRequest, isCourtesy, courtesyReply, welcomeMessage, helpMessage, consentClarification, recipientGreeting } from '../meta/welcome.js';
+import {
+  isGreeting, isHelpRequest, isCourtesy, courtesyReply, isAcknowledgement,
+  acknowledgementReply, looksLikeNoise, welcomeMessage, helpMessage,
+  consentClarification, recipientGreeting
+} from '../meta/welcome.js';
 import { parseNameCommand, runNameCommand, rememberProfileName, getDisplayName } from '../auth/displayName.js';
 import { parseQueueCommand, runQueueCommand, cancelChosenEntry } from '../queue/queueCommands.js';
 import {
@@ -272,6 +276,13 @@ router.post('/webhook', async (req, res) => {
       return;
     }
 
+    // And "ok" is neither. It closes an exchange rather than opening one, so
+    // it gets a close rather than "I didn't understand" or an offer of help.
+    if (type === 'text' && isAcknowledgement(text)) {
+      await sendWhatsAppMessage(phone, acknowledgementReply(lang));
+      return;
+    }
+
     // "כמה נשאר לי" and the handful of questions people ask about how this
     // works are answered from static text — no model call for either.
     if (type === 'text') {
@@ -386,6 +397,23 @@ router.post('/webhook', async (req, res) => {
     // Parse intent using Claude Haiku. Tell it when a file is waiting, so it
     // does not treat the absent message text as something missing.
     const hasMedia = Boolean(mediaId) || Boolean(await peekPendingMedia(phone));
+
+    // The last thing before the model, deliberately. Placed earlier it would
+    // be a gatekeeper every future recogniser has to be checked against;
+    // placed here it only ever catches what nothing else wanted.
+    //
+    // A bare digit or a lone letter can still be an answer to a question the
+    // bot asked — "what should the message say?" answered with "5" — so an
+    // open request or a waiting file sends it on regardless.
+    if (type === 'text' && !hasMedia && looksLikeNoise(text)) {
+      const held = await peekPendingRequest(phone);
+      if (!held?.is_fresh) {
+        console.log(`🔇 Short input ${JSON.stringify(text)} — answered without a model call`);
+        await sendWhatsAppMessage(phone, t('input.unclear', lang));
+        return;
+      }
+    }
+
     console.log(`🧠 Parsing intent for: "${text}"${hasMedia ? ' (with media)' : ''}`);
     const intentResult = await parseSchedulingIntent(text, lang, { hasMedia });
     console.log(`   Result:`, intentResult);

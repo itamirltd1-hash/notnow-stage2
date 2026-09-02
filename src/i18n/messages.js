@@ -406,6 +406,19 @@ const STRINGS = {
   },
   'courtesy.reply': { he: 'בשמחה.', en: 'Any time.' },
 
+  // "ok" is not "thanks" and neither is a question. Answering an acknowledgement
+  // with "I didn't understand" is worse than the silence it replaces.
+  'acknowledged': { he: 'בסדר גמור.', en: 'All right.' },
+
+  // For what is left once every recogniser has passed: a bare digit, a lone
+  // letter, punctuation. Deliberately not the same sentence as parse.failed —
+  // that one offers a scheduling example, which is the wrong help for someone
+  // who typed "5" by accident.
+  'input.unclear': {
+    he: 'לא בטוח למה התכוונת. אפשר לכתוב "עזרה" לרשימת הפקודות.',
+    en: 'I am not sure what you meant. Write "help" for the list of commands.'
+  },
+
   // Group commands are matched by Hebrew patterns, so the English version
   // says which words to use rather than pretending there are English ones.
   'groups.syntax': {

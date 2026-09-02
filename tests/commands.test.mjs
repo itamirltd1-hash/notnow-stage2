@@ -286,3 +286,45 @@ test('an ordinary request is not mistaken for a question about the service', () 
     assert.equal(answerServiceQuestion(text, 'he'), null, text);
   }
 });
+
+// ── Short input ───────────────────────────────────────────────────────────
+import { isAcknowledgement, looksLikeNoise } from '../src/meta/welcome.js';
+
+// "ok" is not "thanks", and neither is a question. Lumping them together
+// answers half the cases wrong.
+test('an acknowledgement is told apart from thanks and from noise', () => {
+  for (const text of ['ok', 'OK', 'okay', 'k', 'כן', 'אוקיי', 'בסדר',
+                      'הבנתי', 'sure', 'got it', 'noted', 'yeah']) {
+    assert.equal(isAcknowledgement(text), true, text);
+    assert.equal(isCourtesy(text), false, `${text} is not thanks`);
+  }
+  for (const text of ['תודה', 'thanks', 'perfect', '👍']) {
+    assert.equal(isCourtesy(text), true, text);
+  }
+});
+
+test('noise is a bare digit, a lone letter or punctuation', () => {
+  for (const text of ['1', '2', '12', '1234', '.', '..', '??', '!', 'א', 'a', '', '   ']) {
+    assert.equal(looksLikeNoise(text), true, JSON.stringify(text));
+  }
+});
+
+// The damage is asymmetric: a guard that misses costs one model call, a guard
+// that swallows costs the sender their request. So it errs towards missing.
+test('anything that could mean something is not noise', () => {
+  for (const text of [
+    'מחר', 'בוא', 'דני', 'אא', 'היי', 'yes', 'now',
+    '0501234567', '+972501234567', '09:00', 'שלח לדני מחר'
+  ]) {
+    assert.equal(looksLikeNoise(text), false, text);
+  }
+});
+
+// Emoji are how people acknowledge things in WhatsApp. They match the noise
+// shape, so courtesy has to catch them first — which is where they sit in the
+// handler chain.
+test('a bare emoji is courtesy, and courtesy is checked before the guard', () => {
+  for (const emoji of ['👍', '🙏', '❤️', '😊', '👏', '✅']) {
+    assert.equal(isCourtesy(emoji), true, emoji);
+  }
+});

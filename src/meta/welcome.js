@@ -17,14 +17,53 @@ export function isHelpRequest(text) {
 // "תודה" was being classified as a question about the product and answered
 // with two paid model calls. Courtesy deserves courtesy, not an explanation.
 const COURTESY =
-  /^\s*(תודה|תודה\s+רבה|מעולה|מצוין|יופי|סבבה|אחלה|מגניב|כל\s+הכבוד|thanks|thanks\s+a\s+lot|thank\s+you|thx|ty|cheers|great|nice|perfect|cool|awesome|excellent|lovely|👍)\s*[!.]*\s*$/i;
+  /^\s*(תודה|תודה\s+רבה|מעולה|מצוין|יופי|סבבה|אחלה|מגניב|כל\s+הכבוד|thanks|thanks\s+a\s+lot|thank\s+you|thx|ty|cheers|great|nice|perfect|cool|awesome|excellent|lovely|👍|🙏|❤️|😊|👏|💪|✅|🔥)\s*[!.]*\s*$/i;
 
 export function isCourtesy(text) {
   return COURTESY.test(text);
 }
 
+// Someone closing an exchange, not thanking and not asking. It reaches here
+// only when no consent question is open — a recipient answering "כן" is
+// resolved long before this.
+const ACKNOWLEDGEMENT =
+  /^\s*(כן|אוקיי|אוקי|בסדר|בסדר\s+גמור|הבנתי|ברור|נכון|ok|okay|k|kk|sure|fine|alright|right|noted|yep|yeah|got\s+it|understood)\s*[!.]*\s*$/i;
+
+export function isAcknowledgement(text) {
+  return ACKNOWLEDGEMENT.test(text);
+}
+
+/**
+ * Is there nothing here for the model to find?
+ *
+ * A bare digit, a lone letter or a row of punctuation cannot name a recipient,
+ * a time or a message, so parsing it costs a paid call and two seconds to
+ * arrive at "I didn't understand".
+ *
+ * Deliberately narrow, and by shape rather than by length: "מחר", "בוא" and
+ * "דני" are short and mean a great deal. The damage is asymmetric — a guard
+ * that misses costs one model call, a guard that swallows costs the sender
+ * their request — so anything with a letter in it beyond a single character
+ * goes on to the model.
+ */
+export function looksLikeNoise(text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return true;
+
+  // Four characters is already generous for something meaningless. A phone
+  // number is all digits too, and is far longer than this.
+  if (trimmed.length > 4) return false;
+
+  if (/^\p{L}$/u.test(trimmed)) return true;
+  return /^[\d\p{P}\p{S}\s]+$/u.test(trimmed);
+}
+
 export function courtesyReply(lang = 'he') {
   return t('courtesy.reply', lang);
+}
+
+export function acknowledgementReply(lang = 'he') {
+  return t('acknowledged', lang);
 }
 
 /**
