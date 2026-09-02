@@ -6,7 +6,7 @@ import { t } from '../src/i18n/messages.js';
 import { parseQueueCommand } from '../src/queue/queueCommands.js';
 import { parseGroupCommand, isGroupsListQuestion } from '../src/groups/groupCommands.js';
 import { parseNameCommand } from '../src/auth/displayName.js';
-import { isHelpRequest } from '../src/meta/welcome.js';
+import { isHelpRequest, helpMessage } from '../src/meta/welcome.js';
 import { isErasureRequest } from '../src/privacy/erasure.js';
 import { isTermsAcceptance } from '../src/legal/terms.js';
 
@@ -103,4 +103,37 @@ test('the description says which languages the bot works in', () => {
   assert.match(description, /עברית ובאנגלית/);
   assert.match(description, /speak English/);
   assert.match(description, /דבר עברית/);
+});
+
+// A first message that has to be scrolled is a first message that gets
+// skipped, and everything cut from it is one word away in "help".
+test('the welcome stays short, and points at the one word that has the rest', () => {
+  for (const lang of ['he', 'en']) {
+    const welcome = t('welcome', lang, { brand: 'Cue' });
+    const lines = welcome.split('\n').filter(line => line.trim());
+
+    assert.ok(lines.length <= 7, `${lang}: ${lines.length} lines is a wall`);
+    assert.match(welcome, lang === 'he' ? /\*עזרה\*/ : /\*help\*/, lang);
+  }
+});
+
+// Bold everywhere reads as an advertisement. It marks the example and the
+// command, and nothing else.
+test('the welcome emphasises the example and the command, not the prose', () => {
+  for (const lang of ['he', 'en']) {
+    const bold = [...t('welcome', lang, { brand: 'Cue' }).matchAll(/\*([^*]+)\*/g)];
+    assert.ok(bold.length <= 3, `${lang}: ${bold.length} bold runs is too many`);
+  }
+});
+
+// The same fault the capability description had: promised while the key is
+// missing, then denied to the person who acts on the promise.
+test('help claims voice transcription only when it is switched on', () => {
+  for (const lang of ['he', 'en']) {
+    const help = helpMessage(lang);
+    const claims = help.includes(t('help.voice.on', lang));
+    assert.equal(claims, Boolean(process.env.OPENAI_API_KEY), lang);
+    // Whichever way round, the section is there — silence would be worse.
+    assert.match(help, /🎙️/, lang);
+  }
 });

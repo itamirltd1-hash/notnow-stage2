@@ -335,30 +335,26 @@ const STRINGS = {
   },
 
   // ── First impressions ─────────────────────────────────────────────────
+  // Six lines, not fourteen. A first message that has to be scrolled is a
+  // first message that gets skipped, and everything cut from here is one word
+  // away in "help". The scope line earns its place: without it nobody learns
+  // that files and groups exist, and nobody writes "help" to find out.
+  //
+  // WhatsApp renders *asterisks* as bold. Only on the example and the command,
+  // because a message with bold everywhere reads as an advertisement.
   'welcome': {
-    he: 'שלום! אני {brand} 👋\n' +
-        'אני מתזמן הודעות WhatsApp — אומרים לי מה, למי ומתי, ואני שולח בזמן.\n\n' +
-        'אפשר פשוט לכתוב לי במילים חופשיות:\n' +
-        '• שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"\n' +
-        '• תזכיר לי עוד שעתיים לחזור ללקוח\n\n' +
-        'אפשר גם להקליט הודעה קולית ואני אתמלל אותה.\n\n' +
-        'לשליחה לכמה אנשים בבת אחת — אפשר ליצור קבוצה. כל אחד יקבל הודעה אישית נפרדת:\n' +
-        '• צור קבוצה טסטרים\n' +
-        '• הוסף לטסטרים 0501111111 דנה\n' +
-        '• תשלח לקבוצת טסטרים מחר ב-10 "בוקר טוב"\n\n' +
-        'לרשימת הפקודות המלאה — לכתוב "עזרה".',
-    en: 'Hello. I am {brand} 👋\n' +
-        'I schedule WhatsApp messages — tell me what, to whom and when, and I send it on time.\n\n' +
-        'You can write to me in plain words:\n' +
-        '• send to Danny 0501234567 tomorrow at 9:00 "see you at the meeting"\n' +
-        '• remind me in two hours to call the client back\n\n' +
-        'You can also record a voice note and I will transcribe it.\n\n' +
-        'To reach several people at once, save a group — each person gets their ' +
-        'own separate message, never a group chat:\n' +
-        '• create group testers\n' +
-        '• add 0501111111 Dana to testers\n' +
-        '• send to the group testers tomorrow at 10 "good morning"\n\n' +
-        'For the full list of commands, write "help".'
+    he: 'שלום! אני *{brand}* 👋\n' +
+        'אומרים לי מה, למי ומתי — ואני שולח בזמן.\n\n' +
+        'למשל:\n' +
+        '*שלח לדני 0501234567 מחר ב-9:00 "נתראה בפגישה"*\n\n' +
+        'אפשר גם לצרף קובץ, או לשלוח לרשימה שמורה של אנשים.\n\n' +
+        'לכל מה שאני יודע — *עזרה*',
+    en: 'Hello! I am *{brand}* 👋\n' +
+        'Tell me what, to whom and when — and I send it on time.\n\n' +
+        'For example:\n' +
+        '*send to Danny 0501234567 tomorrow at 9:00 "see you at the meeting"*\n\n' +
+        'You can also attach a file, or send to a saved list of people.\n\n' +
+        'For everything I can do — *help*'
   },
   'welcome.naming': {
     he: '\n\nכשאבקש אישור מנמען חדש, אציג אותך בשם "{name}". לשינוי — "קרא לי [שם]".',
@@ -380,8 +376,7 @@ const STRINGS = {
         '• מי בטסטרים\n' +
         '• מחק מטסטרים דנה\n' +
         '• קבוצות\n\n' +
-        '🎙️ קולי\n' +
-        'אפשר להקליט הודעה ואתמלל אותה. אשאל אם לשלוח את הטקסט או את ההקלטה עצמה.\n\n' +
+        '{voice}\n\n' +
         'לתשומת לבכם: לפני שליחה למישהו בפעם הראשונה, אני מבקש את אישורו. ' +
         'ההודעה ממתינה עד שהוא מאשר.',
     en: 'What I can do:\n\n' +
@@ -398,12 +393,22 @@ const STRINGS = {
         '• who is in testers\n' +
         '• remove Dana from testers\n' +
         '• groups\n\n' +
-        '🎙️ Voice\n' +
-        'Record a message and I will transcribe it. I will ask whether to send the ' +
-        'words or the recording itself.\n\n' +
+        '{voice}\n\n' +
         'Note: before I write to someone for the first time, I ask their permission. ' +
         'The message waits until they agree.'
   },
+  // Claimed while OPENAI_API_KEY is missing, this reads as the bot lying: the
+  // help says it transcribes, and a recording is answered with "not available
+  // yet". Same fault the capability description had, in a second place.
+  'help.voice.on': {
+    he: '🎙️ קולי\nאפשר להקליט הודעה ואתמלל אותה. אשאל אם לשלוח את הטקסט או את ההקלטה עצמה.',
+    en: '🎙️ Voice\nRecord a message and I will transcribe it. I will ask whether to send the words or the recording itself.'
+  },
+  'help.voice.off': {
+    he: '🎙️ קולי\nתמלול הודעות קוליות עדיין לא פעיל. בינתיים אפשר לכתוב את הבקשה.',
+    en: '🎙️ Voice\nTranscribing voice notes is not switched on yet. For now, please write the request out.'
+  },
+
   'courtesy.reply': { he: 'בשמחה.', en: 'Any time.' },
 
   // "ok" is not "thanks" and neither is a question. Answering an acknowledgement

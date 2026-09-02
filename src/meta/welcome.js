@@ -1,5 +1,6 @@
 import { BRAND } from '../brand.js';
 import { t } from '../i18n/messages.js';
+import { isTranscriptionAvailable } from '../llm/transcriber.js';
 
 // A first message used to cost a model call and come back as "לא הבנתי" —
 // the worst possible introduction. These are matched before anything else.
@@ -82,7 +83,10 @@ export function welcomeMessage(profileName = null, lang = 'he') {
  * The fuller reference, for someone who already knows what the bot is.
  */
 export function helpMessage(lang = 'he') {
-  return t('help', lang);
+  // The description follows the deployment rather than the intent, so the
+  // line flips on its own the day the key is added.
+  const voice = t(isTranscriptionAvailable() ? 'help.voice.on' : 'help.voice.off', lang);
+  return t('help', lang, { voice });
 }
 
 /**
