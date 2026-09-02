@@ -12,6 +12,7 @@ import axios from 'axios';
  *   npm run phone request-code
  *   npm run phone verify 123456
  *   npm run phone register 447722
+ *   npm run phone send +972501234567
  */
 const GRAPH = 'https://graph.facebook.com/v18.0';
 const token = process.env.META_API_TOKEN;
@@ -101,14 +102,64 @@ async function register(pin) {
   await status();
 }
 
-const commands = { status, 'request-code': requestCode, verify, register };
+/**
+ * Send one template message, to prove the whole path works.
+ *
+ * A newly registered number is invisible to a phone that cached "not on
+ * WhatsApp" from before it was registered, and no amount of waiting on that
+ * phone clears it reliably. A message from the business side opens the chat
+ * and settles it — and on the way it exercises the token, the phone number id,
+ * the template name and its language, which is every setting that has to be
+ * right before a real message goes out.
+ *
+ * A template rather than free text: nobody has written to this number yet, so
+ * the 24-hour window is closed and free text would be rejected.
+ */
+async function send(recipient) {
+  if (!/^\+?\d{9,15}$/.test((recipient || '').replace(/[\s\-()]/g, ''))) {
+    fail('Pass the number to write to:  npm run phone send +972501234567');
+  }
+
+  const name = process.env.META_TEMPLATE_NAME || 'scheduled_message_reminder';
+  const language = process.env.META_TEMPLATE_LANGUAGE || 'he';
+  const to = recipient.replace(/[\s\-()+]/g, '');
+
+  console.log(`📄 Sending template "${name}" (${language}) to ${to}`);
+
+  const { data } = await axios.post(`${GRAPH}/${phoneId}/messages`, {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'template',
+    template: {
+      name,
+      language: { code: language },
+      components: [{
+        type: 'body',
+        // Two slots, whichever job this template's wording serves.
+        parameters: [
+          { type: 'text', text: 'בדיקה' },
+          { type: 'text', text: 'Cue' }
+        ]
+      }]
+    }
+  }, {
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+  });
+
+  console.log(`✅ Sent. Message id: ${data.messages?.[0]?.id}`);
+  console.log('   If it does not arrive, the number is right and something else is wrong —');
+  console.log('   check the Deploy Logs for a delivery status webhook.');
+}
+
+const commands = { status, 'request-code': requestCode, verify, register, send };
 
 if (!commands[command]) {
   console.log('Usage:\n' +
     '  npm run phone status\n' +
     '  npm run phone request-code\n' +
     '  npm run phone verify <6-digit code from SMS>\n' +
-    '  npm run phone register <6-digit PIN you choose>');
+    '  npm run phone register <6-digit PIN you choose>\n' +
+    '  npm run phone send <number> — one template message, to prove it works');
   process.exit(1);
 }
 
