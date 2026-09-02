@@ -12,15 +12,25 @@ import { getLanguage } from '../i18n/language.js';
 // Scheduling is fuzzy and benefits from a model; management is precise and
 // destructive — "מחק מטסטרים דנה" must never remove a different person because
 // a parse came back at 0.6 confidence.
-const CREATE = /^\s*(?:צור|תצור|תיצור|פתח|תפתח)\s+קבוצ(?:ה|ת)\s+(.+?)\s*$/;
-const CREATE_EN = /^\s*(?:create|make|start|new)\s+(?:a\s+)?(?:new\s+)?group\s+(?:called\s+|named\s+)?(.+?)\s*$/i;
+const CREATE = /^\s*(?:צור|תצור|תיצור|צרי|פתח|תפתח|פתחי)\s+(?:לי\s+)?קבוצ(?:ה|ת)\s+(?:חדשה\s+)?(?:בשם\s+)?(.+?)\s*$/;
+const CREATE_EN = /^\s*(?:create|make|start|open|new)\s+(?:me\s+)?(?:a\s+)?(?:new\s+)?group\s+(?:called\s+|named\s+)?(.+?)\s*$/i;
 // Read-only, so a loose match costs nothing: at worst it names a group that
 // does not exist and falls through. Destructive commands stay strict.
 // "מי בטסטרים" and "תוכל להראות לי מי מקבוצת בדיקה?" are the same question.
 const MEMBERS_PHRASED =
   /(?:מי|תראה|תראי|הראה|הצג|תציג|רשימת|רשימה)\s.*?קבוצ(?:ת|ה)\s+(.+?)\s*[?？.]?\s*$/;
-const MEMBERS_SHORT = /^\s*מי\s+ב(.+?)\s*[?？.]?\s*$/;
-const REMOVE = /^\s*(?:מחק|תמחק|הסר|תסיר|הוצא)\s+מ(?:קבוצת\s+)?(\S+)\s+(?:את\s+)?(.+?)\s*$/;
+// The "קבוצת" has to come off the name here too. "מי בקבוצת צוות" was
+// capturing "קבוצת צוות" and looking up a group by that whole string, which
+// matches nothing — so the question fell through to the scheduler and was
+// answered as if it were a request to send something.
+const MEMBERS_SHORT =
+  /^\s*מי\s+(?:חבר|חברה|חברים|נמצא|נמצאת|נמצאים|יש)?\s*ב(?:קבוצת\s+|קבוצה\s+|הקבוצה\s+)?(.+?)\s*[?？.]?\s*$/;
+// Hebrew takes both orders as naturally as English does — "הסר מצוות דנה" and
+// "הסר את דנה מצוות" are the same sentence. Only the first was here, so the
+// phrasing that mirrors the English one fell through to the scheduler.
+const REMOVE = /^\s*(?:מחק|תמחק|מחקי|הסר|תסיר|הסירי|הוצא|תוציא|תוציאי)\s+מ(?:קבוצת\s+|הקבוצה\s+)?(\S+)\s+(?:את\s+)?(.+?)\s*$/;
+const REMOVE_HE_LAST =
+  /^\s*(?:מחק|תמחק|מחקי|הסר|תסיר|הסירי|הוצא|תוציא|תוציאי)\s+(?:את\s+)?(.+?)\s+מ(?:קבוצת\s+|הקבוצה\s+)?(\S+)\s*$/;
 
 // English says it the other way round — the person first, the group after —
 // so these capture (person, group) and parseLine swaps them.
@@ -35,7 +45,13 @@ const MEMBERS_PHRASED_EN =
 // "הוסף [לקבוצת X] [את] <the rest>" — the rest holds a phone and a name in
 // whichever order the person happened to say them, which is why it is pulled
 // apart afterwards rather than by more alternatives here.
-const ADD = /^\s*(?:הוסף|תוסיף|צרף|תצרף)\s+(?:ל(?:קבוצת\s+)?(\S+)\s+)?(?:את\s+)?(.+?)\s*$/;
+const ADD = /^\s*(?:הוסף|תוסיף|תוסיפי|צרף|תצרף|תצרפי)\s+(?:ל(?:קבוצת\s+)?(\S+)\s+)?(?:את\s+)?(.+?)\s*$/;
+
+// "הוסף את דנה 050… לצוות". Tried before the one above, whose group is
+// optional: without that order it reads the whole tail as the person's name
+// and quietly adds someone called "דנה לצוות" to whichever group came before.
+const ADD_HE_LAST =
+  /^\s*(?:הוסף|תוסיף|תוסיפי|צרף|תצרף|תצרפי)\s+(?:את\s+)?(.+?)\s+ל(?:קבוצת\s+|קבוצה\s+)?(\S+)\s*$/;
 
 // Three shapes, tried in this order because the first two are more specific
 // and the third would swallow them: "add X to Y" ends up as a person called
@@ -43,7 +59,7 @@ const ADD = /^\s*(?:הוסף|תוסיף|צרף|תצרף)\s+(?:ל(?:קבוצת\s+
 const ADD_EN_TO_FIRST =
   /^\s*(?:add|put)\s+(?:in)?to\s+(?:the\s+)?(?:group\s+)?(\S+)\s+(.+?)\s*$/i;
 const ADD_EN_TO_LAST =
-  /^\s*(?:add|put)\s+(.+?)\s+(?:in)?to\s+(?:the\s+)?(?:group\s+)?(\S+)\s*$/i;
+  /^\s*(?:add|put)\s+(.+?)\s+(?:into|in|to)\s+(?:the\s+)?(?:group\s+)?(\S+)\s*$/i;
 const ADD_EN_BARE = /^\s*(?:add|put)\s+(.+?)\s*$/i;
 const PHONE_IN_TEXT = /([+\d][\d\-\s()]{6,}\d)/;
 
@@ -52,7 +68,7 @@ const PHONE_IN_TEXT = /([+\d][\d\-\s()]{6,}\d)/;
 // lookahead is used on the English side rather than \b, so both halves of the
 // rule read the same way and neither can be copied wrong later.
 const MANAGEMENT_VERB =
-  /^\s*(?:צור|תצור|תיצור|פתח|תפתח|הוסף|תוסיף|צרף|תצרף|מחק|תמחק|הסר|תסיר|הוצא)(?=\s|$)/;
+  /^\s*(?:צור|תצור|תיצור|צרי|פתח|תפתח|פתחי|הוסף|תוסיף|תוסיפי|צרף|תצרף|תצרפי|מחק|תמחק|מחקי|הסר|תסיר|הסירי|הוצא|תוציא|תוציאי)(?=\s|$)/;
 
 // The English verbs are ordinary sentence openers — "add a reminder", "make a
 // note", "delete the meeting" — so on their own they say nothing. They count
@@ -85,9 +101,11 @@ function parseLine(line) {
   const remove = line.match(REMOVE);
   if (remove) return { action: 'remove', args: [remove[1], remove[2]] };
 
-  // (person, group) in English, (group, person) in Hebrew.
-  const removeEn = line.match(REMOVE_EN);
-  if (removeEn) return { action: 'remove', args: [removeEn[2], removeEn[1]] };
+  // Person first, group last — the order both languages also allow.
+  for (const pattern of [REMOVE_HE_LAST, REMOVE_EN]) {
+    const match = line.match(pattern);
+    if (match) return { action: 'remove', args: [match[2], match[1]] };
+  }
 
   const add = line.match(ADD_EN_TO_FIRST);
   if (add) {
@@ -99,6 +117,12 @@ function parseLine(line) {
   if (addLast) {
     const contact = splitContact(addLast[1]);
     if (contact) return { action: 'add', args: [addLast[2], contact.phone, contact.name] };
+  }
+
+  const addHeLast = line.match(ADD_HE_LAST);
+  if (addHeLast) {
+    const contact = splitContact(addHeLast[1]);
+    if (contact) return { action: 'add', args: [addHeLast[2], contact.phone, contact.name] };
   }
 
   const addHe = line.match(ADD) || line.match(ADD_EN_BARE);

@@ -328,3 +328,98 @@ test('a bare emoji is courtesy, and courtesy is checked before the guard', () =>
     assert.equal(isCourtesy(emoji), true, emoji);
   }
 });
+
+// ── Group commands take either word order ─────────────────────────────────
+//
+// Hebrew allows both as naturally as English does: "הסר מצוות דנה" and
+// "הסר את דנה מצוות" are the same sentence. Only one was accepted, so the
+// phrasing that mirrors the English order fell through to the scheduler and
+// was answered as though it were a request to send something.
+
+const GROUP = 'צוות';
+
+test('a member is added in either Hebrew word order', () => {
+  const expected = { action: 'add', args: [GROUP, '0501111111', 'דנה'] };
+  for (const text of [
+    'הוסף לצוות 0501111111 דנה',
+    'הוסף לקבוצת צוות את דנה 0501111111',
+    'הוסף את דנה 0501111111 לצוות',
+    'תוסיף את דנה 0501111111 לקבוצת צוות',
+    'צרף את דנה 0501111111 לצוות'
+  ]) {
+    assert.deepEqual(parseGroupCommand(text), expected, text);
+  }
+});
+
+test('a member is removed in either Hebrew word order', () => {
+  const expected = { action: 'remove', args: [GROUP, 'דנה'] };
+  for (const text of [
+    'מחק מצוות דנה',
+    'הסר מקבוצת צוות דנה',
+    'תסיר את דנה מצוות',
+    'תסיר את דנה מקבוצת צוות',
+    'תוציא את דנה מצוות',
+    'הסר את דנה מהקבוצה צוות'
+  ]) {
+    assert.deepEqual(parseGroupCommand(text), expected, text);
+  }
+});
+
+test('the same in English, both ways round', () => {
+  const add = { action: 'add', args: ['Team', '0501111111', 'Dana'] };
+  for (const text of [
+    'add to Team 0501111111 Dana',
+    'add Dana 0501111111 to Team',
+    'add Dana 0501111111 to the group Team',
+    'put Dana 0501111111 in Team'
+  ]) {
+    assert.deepEqual(parseGroupCommand(text), add, text);
+  }
+
+  const remove = { action: 'remove', args: ['Team', 'Dana'] };
+  for (const text of [
+    'remove Dana from Team',
+    'delete Dana from the group Team',
+    'take Dana out of Team'
+  ]) {
+    assert.deepEqual(parseGroupCommand(text), remove, text);
+  }
+});
+
+test('a group is created however the sentence is phrased', () => {
+  for (const text of [
+    'צור קבוצה צוות', 'צור לי קבוצה צוות', 'תפתח קבוצה בשם צוות',
+    'פתח קבוצה חדשה צוות'
+  ]) {
+    assert.deepEqual(parseGroupCommand(text), { action: 'create', args: [GROUP] }, text);
+  }
+  for (const text of [
+    'create group Team', 'make a group Team', 'open a new group Team',
+    'create a group called Team'
+  ]) {
+    assert.deepEqual(parseGroupCommand(text), { action: 'create', args: ['Team'] }, text);
+  }
+});
+
+// "מי בקבוצת צוות" was capturing "קבוצת צוות" and looking a group up by that
+// whole string, which matches nothing — so the question fell through to the
+// scheduler. The construct-state word has to come off the name.
+test('the word "group" is not part of the group name', () => {
+  for (const text of [
+    'מי בצוות', 'מי בקבוצת צוות', 'מי חבר בקבוצה צוות', 'מי נמצא בצוות'
+  ]) {
+    assert.deepEqual(parseGroupCommand(text), { action: 'members', args: [GROUP] }, text);
+  }
+});
+
+// The forward pattern's group is optional, so without the reversed one first
+// it reads the whole tail as a name and adds "דנה לצוות" to whichever group
+// the previous line named.
+test('the reversed order is matched before the one with an optional group', () => {
+  const batch = parseGroupCommand(
+    'הוסף לצוות 0501111111 דנה\nהוסף את רוני 0502222222 לצוות'
+  );
+  assert.equal(batch.action, 'batch');
+  assert.deepEqual(batch.commands.map(c => c.args[2]), ['דנה', 'רוני']);
+  assert.deepEqual(batch.commands.map(c => c.args[0]), [GROUP, GROUP]);
+});
