@@ -2,6 +2,11 @@ import express from 'express';
 import crypto from 'crypto';
 import pool from '../db/pool.js';
 import { userQuery } from '../db/multitenancyHelpers.js';
+import { normalizePhoneNumber, registerOrUpdateContact } from '../auth/userContextExtractor.js';
+import { getConsentStatus, requestConsent } from '../meta/consent.js';
+import { isSuppressed } from '../privacy/erasure.js';
+import { checkUserQuota, incrementMonthlyUsage } from '../billing/quotaMiddleware.js';
+import { getDisplayName } from '../auth/displayName.js';
 
 const router = express.Router();
 
@@ -79,17 +84,68 @@ router.post('/schedule', validateApiKey, async (req, res) => {
       });
     }
 
+    // A CRM sends whatever its own field holds — "050-1234567" as often as
+    // "+972501234567". Stored raw it matches no consent row and no suppression
+    // entry, so every protection below would silently look at the wrong key.
+    const phone = normalizePhoneNumber(recipient_phone);
+    if (!phone) {
+      return res.status(400).json({ success: false, error: 'recipient_phone is not a phone number' });
+    }
+
+    // An erasure binds every tenant, including one holding an API key.
+    if (await isSuppressed(phone)) {
+      return res.status(403).json({
+        success: false,
+        error: 'This number asked to be removed and cannot be contacted'
+      });
+    }
+
+    // Checked here rather than as route middleware, because the tenant is only
+    // known once the API key has been resolved.
+    const quota = await checkUserQuota(userId);
+    if (!quota.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: 'Quota exceeded',
+        quota: { used: quota.used, limit: quota.limit, remaining: 0, tier: quota.tier }
+      });
+    }
+
+    // The same rule the conversational path follows: nobody is written to
+    // before they agree. Without this an API key is a way around the one
+    // protection that keeps the sending number's reputation intact — and the
+    // number belongs to us, not to the tenant holding the key.
+    await registerOrUpdateContact(userId, phone, recipient_name);
+    const consent = await getConsentStatus(userId, phone);
+
+    if (consent === 'declined') {
+      return res.status(403).json({
+        success: false,
+        error: 'This recipient declined to receive messages'
+      });
+    }
+
+    const status = consent === 'granted' ? 'pending' : 'awaiting_consent';
+
     // Queue the message
     const result = await userQuery(
       userId,
       `INSERT INTO active_queue
        (user_id, recipient_phone, recipient_name, message_body, channel, recipient_email, subject, scheduled_at, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING queue_id, created_at`,
-      [recipient_phone, recipient_name, message_body, channel, recipient_email, subject, scheduled_at]
+      [phone, recipient_name, message_body, channel, recipient_email, subject, scheduled_at, status]
     );
 
     const queueId = result.rows[0].queue_id;
+
+    if (consent === 'unknown') {
+      await requestConsent(userId, phone, await getDisplayName(userId), recipient_name);
+    }
+
+    // The conversational path bills on scheduling, and so does this one, or a
+    // key holder would send against a count that never rises.
+    await incrementMonthlyUsage(userId, 1);
 
     // Log activity
     await pool.query(
@@ -109,7 +165,10 @@ router.post('/schedule', validateApiKey, async (req, res) => {
       success: true,
       data: {
         queue_id: queueId,
-        status: 'pending',
+        status,
+        // Said plainly, because a caller seeing 201 would otherwise assume the
+        // message is on its way when it is waiting on someone else's answer.
+        awaiting_recipient_consent: status === 'awaiting_consent',
         scheduled_at,
         estimated_delivery: scheduledDate.toISOString()
       }

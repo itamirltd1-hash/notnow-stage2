@@ -9,7 +9,8 @@
     "dev": "node --watch server.js",
     "test": "node --test tests/*.test.mjs",
     "migrate": "node scripts/migrate.js",
-    "phone": "node scripts/phone.js"
+    "phone": "node scripts/phone.js",
+    "apikey": "node scripts/apikey.js"
   },
   "keywords": [
     "whatsapp",
